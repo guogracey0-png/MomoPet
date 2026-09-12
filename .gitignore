@@ -1,0 +1,52 @@
+# Local agent and editor state
+.agents/
+.claude/
+.workbuddy/
+.tmp/
+tmp/
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Build products and logs
+*.exe
+*.dll
+*.pdb
+*.log
+bin/
+obj/
+release/
+test-output/
+finish-image-update.ps1
+
+# Local distribution folders
+本地部署/
+MomoLive2D/
+
+# Historical prototype and dependency caches
+live2d-pet/
+.pnpm-store/
+node_modules/
+.next/
+target/
+
+# Intermediate and superseded sprite generations
+assets/*
+!assets/normalized/
+!assets/normalized/**
+assets/edge-v3/
+assets/skin-motion-v2/
+assets/skin-motion-reviewed/
+assets/skin-magenta-drafts/
+assets/skin-happy-drafts/
+
+# Python caches and machine-specific packages
+__pycache__/
+*.py[cod]
+wind_bridge/site-packages/
+
+# Operating-system files
+Thumbs.db
+Desktop.ini
+.DS_Store
