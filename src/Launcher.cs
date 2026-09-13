@@ -58,15 +58,18 @@ namespace MomoPetApp
 
         void BuildLauncherPanel()
         {
-            launcherPanel=new Window{Title="博道咪功能入口",Width=430,Height=210,MinWidth=360,MinHeight=176,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.CanResize,ShowInTaskbar=false,AllowsTransparency=true,Background=Brushes.Transparent,Topmost=pet.Topmost};Ui.StyleWindow(launcherPanel);
-            var canvas=new Canvas{Width=430,Height=210};launcherBubbles.Clear();
+            launcherPanel=new Window{Title="博道咪功能入口",Width=602,Height=210,MinWidth=500,MinHeight=176,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.CanResize,ShowInTaskbar=false,AllowsTransparency=true,Background=Brushes.Transparent,Topmost=pet.Topmost};Ui.StyleWindow(launcherPanel);
+            var canvas=new Canvas{Width=602,Height=210};launcherBubbles.Clear();
             AddLauncherBubble(canvas,"📝","工作记录",10,10,"记录事项、重复日程与提醒",delegate{TogglePanel();});
-            AddLauncherBubble(canvas,"📦","中转袋",214,10,"搜索、预览与拖出各类文件",delegate{ToggleStashPanel();});
-            AddLauncherBubble(canvas,"✨","AI 口袋",10,76,"AI 对话、图片生成与编辑",delegate{OpenAiPocketChat("");});
-            AddLauncherBubble(canvas,"📈","大盘盯盘",214,76,"行情监控与收盘汇总",delegate{ToggleMarketPanel();});
-            AddLauncherBubble(canvas,"🔎","Wind AI",10,142,"自然语言查询金融数据",delegate{ToggleAiSearchPanel();});
-            AddLauncherBubble(canvas,"🛡","合规审核",214,142,"规则初筛、模型复核与留痕",delegate{OpenComplianceReview();});
-            var close=new Border{Width=22,Height=22,CornerRadius=new CornerRadius(11),Background=Ui.Card,BorderBrush=Ui.Line,BorderThickness=new Thickness(1),Cursor=Cursors.Hand,ToolTip="收起"};close.Child=new TextBlock{Text="×",FontFamily=new FontFamily("Segoe UI Symbol"),FontSize=13,Foreground=Ui.SubInk,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,-1,0,0)};close.MouseLeftButtonUp+=delegate{HideLauncherAndRestoreShelves();};Canvas.SetLeft(close,404);Canvas.SetTop(close,4);Panel.SetZIndex(close,10);canvas.Children.Add(close);
+            AddLauncherBubble(canvas,"📦","中转袋",204,10,"搜索、预览与拖出各类文件",delegate{ToggleStashPanel();});
+            AddLauncherBubble(canvas,"✨","AI 口袋",398,10,"AI 对话、图片生成与编辑",delegate{OpenAiPocketChat("");});
+            AddLauncherBubble(canvas,"📈","大盘盯盘",10,76,"行情监控与收盘汇总",delegate{ToggleMarketPanel();});
+            AddLauncherBubble(canvas,"🔎","Wind AI",204,76,"自然语言查询金融数据",delegate{ToggleAiSearchPanel();});
+            AddLauncherBubble(canvas,"🛡","合规审核",398,76,"规则初筛、模型复核与留痕",delegate{OpenComplianceReview();});
+            AddLauncherBubble(canvas,"☕","AI 社区",10,142,"分享经验、加入小组与查看周报",delegate{OpenCommunityPanel();});
+            AddLauncherBubble(canvas,"▦","AI 应用",204,142,"发现、管理并直接运行 AI 应用",delegate{OpenAiAppsPanel();});
+            AddLauncherBubble(canvas,"◇","资源中心",398,142,"集中整理 Skill 与素材",delegate{OpenResourceCenterPanel();});
+            var close=new Border{Width=22,Height=22,CornerRadius=new CornerRadius(11),Background=Ui.Card,BorderBrush=Ui.Line,BorderThickness=new Thickness(1),Cursor=Cursors.Hand,ToolTip="收起"};close.Child=new TextBlock{Text="×",FontFamily=new FontFamily("Segoe UI Symbol"),FontSize=13,Foreground=Ui.SubInk,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,-1,0,0)};close.MouseLeftButtonUp+=delegate{HideLauncherAndRestoreShelves();};Canvas.SetLeft(close,576);Canvas.SetTop(close,4);Panel.SetZIndex(close,10);canvas.Children.Add(close);
             // 入口本身也能调整大小，功能卡片按比例同步缩放，不留大片空白。
             var launcherView=new Viewbox{Stretch=Stretch.Uniform,Child=canvas};launcherPanel.Content=launcherView;
             launcherPanel.Deactivated+=delegate{HideLauncherAndRestoreShelves();};launcherPanel.KeyDown+=delegate(object sender,KeyEventArgs e){if(e.Key==Key.Escape){HideLauncherAndRestoreShelves();e.Handled=true;}};launcherPanel.Closing+=delegate(object s,System.ComponentModel.CancelEventArgs e){if(!exiting){e.Cancel=true;HideLauncherAndRestoreShelves();}};
@@ -117,7 +120,7 @@ namespace MomoPetApp
         void AddLauncherBubble(Canvas canvas,string icon,string label,double left,double top,string tooltip,Action action)
         {
             var content=new Grid{Margin=new Thickness(14,0,12,0)};content.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(34)});content.ColumnDefinitions.Add(new ColumnDefinition());var iconText=new TextBlock{Text=icon,FontSize=20,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Left};content.Children.Add(iconText);var copy=new StackPanel{VerticalAlignment=VerticalAlignment.Center};copy.Children.Add(new TextBlock{Text=label,FontSize=12.5,FontWeight=FontWeights.Bold,Foreground=Ui.Ink});copy.Children.Add(new TextBlock{Text=tooltip,FontSize=9.5,Foreground=Ui.SubInk,Margin=new Thickness(0,2,0,0)});Grid.SetColumn(copy,1);content.Children.Add(copy);
-            var bubble=new Border{Width=188,Height=58,CornerRadius=new CornerRadius(13),Background=Ui.Card,BorderBrush=Ui.Line,BorderThickness=new Thickness(1),Child=content,Cursor=Cursors.Hand,ToolTip=tooltip,RenderTransformOrigin=new Point(.5,.5),Effect=new DropShadowEffect{Color=Colors.Black,BlurRadius=12,ShadowDepth=2,Opacity=.07,RenderingBias=RenderingBias.Performance}};var scale=new ScaleTransform(1,1);bubble.RenderTransform=scale;
+            var bubble=new Border{Width=180,Height=58,CornerRadius=new CornerRadius(13),Background=Ui.Card,BorderBrush=Ui.Line,BorderThickness=new Thickness(1),Child=content,Cursor=Cursors.Hand,ToolTip=tooltip,RenderTransformOrigin=new Point(.5,.5),Effect=new DropShadowEffect{Color=Colors.Black,BlurRadius=12,ShadowDepth=2,Opacity=.07,RenderingBias=RenderingBias.Performance}};var scale=new ScaleTransform(1,1);bubble.RenderTransform=scale;
             bubble.MouseEnter+=delegate{scale.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(1.018,TimeSpan.FromMilliseconds(110)));scale.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1.018,TimeSpan.FromMilliseconds(110)));bubble.BorderBrush=Ui.Accent;};
             bubble.MouseLeave+=delegate{scale.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(1,TimeSpan.FromMilliseconds(180)));scale.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1,TimeSpan.FromMilliseconds(180)));bubble.BorderBrush=Ui.Line;};
             bubble.MouseLeftButtonUp+=delegate{HideLauncherAndRestoreShelves();action();};Canvas.SetLeft(bubble,left);Canvas.SetTop(bubble,top);canvas.Children.Add(bubble);launcherBubbles.Add(bubble);
@@ -322,7 +325,7 @@ namespace MomoPetApp
 
         string ShelfLabel(Window window)
         {
-            if(window==stashPanel)return "中转 "+stashItems.Count;if(window==panel)return "工作簿";if(window==launcherPanel)return "功能";if(window==marketPanel)return "盯盘";if(window==aiSearchPanel)return "Wind AI";if(window==imageEditorPanel)return "AI 口袋";if(window==movementSettingsPanel)return "活动范围";if(window==aiSettingsPanel||window==imageAiSettingsPanel)return "模型设置";return String.IsNullOrWhiteSpace(window.Title)?"临时窗口":window.Title.Replace("博道咪","").Trim();
+            if(window==stashPanel)return "中转 "+stashItems.Count;if(window==panel)return "工作簿";if(window==launcherPanel)return "功能";if(window==marketPanel)return "盯盘";if(window==aiSearchPanel)return "Wind AI";if(window==imageEditorPanel)return "AI 口袋";if(window==communityPanel)return "AI 社区";if(window==aiAppsPanel)return "AI 应用";if(window==resourceCenterPanel)return "资源中心";if(window==movementSettingsPanel)return "活动范围";if(window==aiSettingsPanel||window==imageAiSettingsPanel)return "模型设置";return String.IsNullOrWhiteSpace(window.Title)?"临时窗口":window.Title.Replace("博道咪","").Trim();
         }
 
         void RestoreWindow(Window window)

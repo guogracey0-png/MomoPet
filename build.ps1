@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$source = @((Join-Path $root 'src\Ui.cs'), (Join-Path $root 'src\OfficeComfort.cs'), (Join-Path $root 'src\MomoPet.cs'), (Join-Path $root 'src\SkinWardrobe.cs'), (Join-Path $root 'src\StashWorkspace.cs'), (Join-Path $root 'src\PetExperience.cs'), (Join-Path $root 'src\AiSearch.cs'), (Join-Path $root 'src\ImageEditor.cs'), (Join-Path $root 'src\AiPocket.cs'), (Join-Path $root 'src\Launcher.cs'), (Join-Path $root 'src\ComplianceUpgrade.cs'), (Join-Path $root 'src\OcrContracts.cs'), (Join-Path $root 'src\EmbeddedRuntime.cs'))
+$source = @((Join-Path $root 'src\Ui.cs'), (Join-Path $root 'src\OfficeComfort.cs'), (Join-Path $root 'src\MomoPet.cs'), (Join-Path $root 'src\SkinWardrobe.cs'), (Join-Path $root 'src\StashWorkspace.cs'), (Join-Path $root 'src\PetExperience.cs'), (Join-Path $root 'src\AiSearch.cs'), (Join-Path $root 'src\ImageEditor.cs'), (Join-Path $root 'src\AiPocket.cs'), (Join-Path $root 'src\AiCommunity.cs'), (Join-Path $root 'src\Launcher.cs'), (Join-Path $root 'src\ComplianceUpgrade.cs'), (Join-Path $root 'src\OcrContracts.cs'), (Join-Path $root 'src\EmbeddedRuntime.cs'))
 # 注意：本目录被外部 safe-delete 钩子保护，任何"覆盖/删除已存在文件"都会被拦截且脚本内接不住。
 # 因此所有编译产物一律写到全新的带时间戳文件名，永不覆盖旧文件。
 $stamp = Get-Date -Format 'MMdd-HHmmss'
