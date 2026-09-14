@@ -67,6 +67,7 @@ namespace MomoPetApp
         {
             if(String.IsNullOrWhiteSpace(id))id="default";
             petMovement.SkinId=id;SavePetMovementSettings();ApplySelectedSkin();
+            OnLocalSkinChanged(id);
             foreach(MenuItem item in skinQuickMenuItems)item.IsChecked=Convert.ToString(item.Tag)==id;
             React(id=="default"?"换回原来的我啦～":"新装扮换好啦～",false);
         }
@@ -107,7 +108,7 @@ namespace MomoPetApp
             stage.SizeChanged+=delegate{skinLargePreview.MaxWidth=Math.Max(1,stage.ActualWidth-26);skinLargePreview.MaxHeight=Math.Max(1,stage.ActualHeight-26);};
             var copy=new StackPanel{Margin=new Thickness(2,14,2,12)};skinPreviewName=Ui.Title("",18);skinPreviewStatus=Ui.Subtitle("8 个动作 · 真实透明底");copy.Children.Add(skinPreviewName);copy.Children.Add(skinPreviewStatus);Grid.SetRow(copy,1);previewLayout.Children.Add(copy);
             skinMotionPreview=new WrapPanel();Grid.SetRow(skinMotionPreview,2);previewLayout.Children.Add(skinMotionPreview);
-            var footer=new Grid{Margin=new Thickness(0,18,0,0)};footer.ColumnDefinitions.Add(new ColumnDefinition());footer.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});var hint=Ui.Subtitle("右键小猫也能快速切换；衣柜用于完整预览");hint.VerticalAlignment=VerticalAlignment.Center;footer.Children.Add(hint);var actions=new StackPanel{Orientation=Orientation.Horizontal};var cancel=Ui.MakeButton("取消",Ui.Neutral);cancel.Click+=delegate{skinWardrobePanel.Hide();};var apply=Ui.MakeButton("应用这套皮肤",Ui.Accent);apply.Foreground=Brushes.White;apply.Click+=delegate{ApplySkinChoice(pendingSkinId);skinWardrobePanel.Hide();};actions.Children.Add(cancel);actions.Children.Add(apply);Grid.SetColumn(actions,1);footer.Children.Add(actions);Grid.SetRow(footer,2);layout.Children.Add(footer);
+            var footer=new Grid{Margin=new Thickness(0,18,0,0)};footer.ColumnDefinitions.Add(new ColumnDefinition());footer.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});var hint=Ui.Subtitle("右键小猫也能快速切换；衣柜用于完整预览");hint.VerticalAlignment=VerticalAlignment.Center;footer.Children.Add(hint);var actions=new StackPanel{Orientation=Orientation.Horizontal};var courier=Ui.MakeButton("预览送信",Ui.Neutral);courier.Click+=delegate{PreviewCourierSkin(pendingSkinId);};var cancel=Ui.MakeButton("取消",Ui.Neutral);cancel.Click+=delegate{skinWardrobePanel.Hide();};var apply=Ui.MakeButton("应用这套皮肤",Ui.Accent);apply.Foreground=Brushes.White;apply.Click+=delegate{ApplySkinChoice(pendingSkinId);skinWardrobePanel.Hide();};actions.Children.Add(courier);actions.Children.Add(cancel);actions.Children.Add(apply);Grid.SetColumn(actions,1);footer.Children.Add(actions);Grid.SetRow(footer,2);layout.Children.Add(footer);
             shell.Child=layout;skinWardrobePanel.Content=shell;skinWardrobePanel.Closing+=delegate(object s,System.ComponentModel.CancelEventArgs e){if(!exiting){e.Cancel=true;skinWardrobePanel.Hide();}};
         }
 

@@ -66,7 +66,7 @@ namespace MomoPetApp
             AddLauncherBubble(canvas,"📈","大盘盯盘",10,76,"行情监控与收盘汇总",delegate{ToggleMarketPanel();});
             AddLauncherBubble(canvas,"🔎","Wind AI",204,76,"自然语言查询金融数据",delegate{ToggleAiSearchPanel();});
             AddLauncherBubble(canvas,"🛡","合规审核",398,76,"规则初筛、模型复核与留痕",delegate{OpenComplianceReview();});
-            AddLauncherBubble(canvas,"☕","AI 社区",10,142,"分享经验、加入小组与查看周报",delegate{OpenCommunityPanel();});
+            AddLauncherBubble(canvas,"☕","社区 · 来信",10,142,"分享经验，也让朋友的小猫来送信",delegate{OpenCommunityPanel();});
             AddLauncherBubble(canvas,"▦","AI 应用",204,142,"发现、管理并直接运行 AI 应用",delegate{OpenAiAppsPanel();});
             AddLauncherBubble(canvas,"◇","资源中心",398,142,"集中整理 Skill 与素材",delegate{OpenResourceCenterPanel();});
             var close=new Border{Width=22,Height=22,CornerRadius=new CornerRadius(11),Background=Ui.Card,BorderBrush=Ui.Line,BorderThickness=new Thickness(1),Cursor=Cursors.Hand,ToolTip="收起"};close.Child=new TextBlock{Text="×",FontFamily=new FontFamily("Segoe UI Symbol"),FontSize=13,Foreground=Ui.SubInk,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,-1,0,0)};close.MouseLeftButtonUp+=delegate{HideLauncherAndRestoreShelves();};Canvas.SetLeft(close,576);Canvas.SetTop(close,4);Panel.SetZIndex(close,10);canvas.Children.Add(close);
@@ -325,7 +325,7 @@ namespace MomoPetApp
 
         string ShelfLabel(Window window)
         {
-            if(window==stashPanel)return "中转 "+stashItems.Count;if(window==panel)return "工作簿";if(window==launcherPanel)return "功能";if(window==marketPanel)return "盯盘";if(window==aiSearchPanel)return "Wind AI";if(window==imageEditorPanel)return "AI 口袋";if(window==communityPanel)return "AI 社区";if(window==aiAppsPanel)return "AI 应用";if(window==resourceCenterPanel)return "资源中心";if(window==movementSettingsPanel)return "活动范围";if(window==aiSettingsPanel||window==imageAiSettingsPanel)return "模型设置";return String.IsNullOrWhiteSpace(window.Title)?"临时窗口":window.Title.Replace("博道咪","").Trim();
+            if(window==stashPanel)return "中转 "+stashItems.Count;if(window==panel)return "工作簿";if(window==launcherPanel)return "功能";if(window==marketPanel)return "盯盘";if(window==aiSearchPanel)return "Wind AI";if(window==imageEditorPanel)return "AI 口袋";if(window==communityPanel)return "AI 社区";if(window==messengerPanel)return "账号与来信";if(window==aiAppsPanel)return "AI 应用";if(window==resourceCenterPanel)return "资源中心";if(window==movementSettingsPanel)return "活动范围";if(window==aiSettingsPanel||window==imageAiSettingsPanel)return "模型设置";return String.IsNullOrWhiteSpace(window.Title)?"临时窗口":window.Title.Replace("博道咪","").Trim();
         }
 
         void RestoreWindow(Window window)

@@ -223,6 +223,7 @@ namespace MomoPetApp
             BuildPet();
             ApplySelectedSkin();
             InitializePetExperience();
+            InitializeMessenger();
             UpgradeStoredImages();
             RefreshTasks();
             RefreshStash();
@@ -404,10 +405,11 @@ namespace MomoPetApp
             var windAiSettings = new MenuItem { Header = "Wind AI 模型设置" }; windAiSettings.Click += delegate { ShowWindAiModelSettings(); };
             var marketSettings = new MenuItem { Header = "盯盘与 Wind Key 设置" }; marketSettings.Click += delegate { ToggleMarketPanel(); };
             var movementSettings = new MenuItem { Header = "活动范围与自动移动" }; movementSettings.Click += delegate { OpenMovementSettings(); };
+            var letters = new MenuItem { Header = "账号与来信" }; letters.Click += delegate { OpenMessengerPanel(); };
             var topmost = new MenuItem { Header = "保持最前", IsCheckable = true, IsChecked = true };
-            topmost.Click += delegate { pet.Topmost = topmost.IsChecked;if(panel!=null)panel.Topmost=topmost.IsChecked;if (stashPanel != null) stashPanel.Topmost = topmost.IsChecked;if(marketPanel!=null)marketPanel.Topmost=topmost.IsChecked;if(launcherPanel!=null)launcherPanel.Topmost=topmost.IsChecked;if(movementSettingsPanel!=null)movementSettingsPanel.Topmost=topmost.IsChecked;if(skinWardrobePanel!=null)skinWardrobePanel.Topmost=topmost.IsChecked; SetAiTopmost(topmost.IsChecked);SetCommunityTopmost(topmost.IsChecked); };
+            topmost.Click += delegate { pet.Topmost = topmost.IsChecked;if(panel!=null)panel.Topmost=topmost.IsChecked;if (stashPanel != null) stashPanel.Topmost = topmost.IsChecked;if(marketPanel!=null)marketPanel.Topmost=topmost.IsChecked;if(launcherPanel!=null)launcherPanel.Topmost=topmost.IsChecked;if(movementSettingsPanel!=null)movementSettingsPanel.Topmost=topmost.IsChecked;if(skinWardrobePanel!=null)skinWardrobePanel.Topmost=topmost.IsChecked; SetAiTopmost(topmost.IsChecked);SetCommunityTopmost(topmost.IsChecked);SetMessengerTopmost(topmost.IsChecked); };
             var exit = new MenuItem { Header = "退出博道咪" }; exit.Click += delegate { Exit(); };
-            menu.Items.Add(imageAiSettings);menu.Items.Add(windAiSettings);menu.Items.Add(marketSettings);menu.Items.Add(movementSettings);menu.Items.Add(new Separator());AddPetExperienceMenu(menu);AddSkinMenu(menu);menu.Items.Add(new Separator());menu.Items.Add(topmost);menu.Items.Add(new Separator());menu.Items.Add(exit);
+            menu.Items.Add(letters);menu.Items.Add(imageAiSettings);menu.Items.Add(windAiSettings);menu.Items.Add(marketSettings);menu.Items.Add(movementSettings);menu.Items.Add(new Separator());AddPetExperienceMenu(menu);AddSkinMenu(menu);menu.Items.Add(new Separator());menu.Items.Add(topmost);menu.Items.Add(new Separator());menu.Items.Add(exit);
             StylePetContextMenu(menu);
             pet.ContextMenu = menu;
             pet.Closed += delegate { if (!exiting) Exit(); };
@@ -1765,6 +1767,6 @@ namespace MomoPetApp
             return value*value*(3-2*value);
         }
 
-        void Exit() { if (exiting) return; exiting = true; if(comfortSaveTimer!=null)comfortSaveTimer.Stop();foreach(Window savedWindow in comfortLoaded.ToList())SaveOfficeState(savedWindow); timer.Stop(); if (speechTimer != null) speechTimer.Stop(); if (idleTimer != null) idleTimer.Stop(); if (marketTimer != null) marketTimer.Stop();if(launcherClickTimer!=null)launcherClickTimer.Stop();CancelShelfPeekTimers();ShutdownPetExperience(); if(renderAttached) { CompositionTarget.Rendering -= OnRendering; renderAttached=false; } CloseAiWindows();CloseCommunityWindows();if(skinWardrobePanel!=null)skinWardrobePanel.Close();if(shelfPeekPanel!=null)shelfPeekPanel.Close();if(launcherPanel!=null)launcherPanel.Close(); if (marketPanel != null) marketPanel.Close(); if (stashPanel != null) stashPanel.Close(); if (panel != null) panel.Close(); if (pet != null) pet.Close(); app.Shutdown(); }
+        void Exit() { if (exiting) return; exiting = true; if(comfortSaveTimer!=null)comfortSaveTimer.Stop();foreach(Window savedWindow in comfortLoaded.ToList())SaveOfficeState(savedWindow); timer.Stop(); if (speechTimer != null) speechTimer.Stop(); if (idleTimer != null) idleTimer.Stop(); if (marketTimer != null) marketTimer.Stop();if(launcherClickTimer!=null)launcherClickTimer.Stop();CancelShelfPeekTimers();ShutdownPetExperience(); if(renderAttached) { CompositionTarget.Rendering -= OnRendering; renderAttached=false; } CloseAiWindows();CloseCommunityWindows();CloseMessengerWindows();if(skinWardrobePanel!=null)skinWardrobePanel.Close();if(shelfPeekPanel!=null)shelfPeekPanel.Close();if(launcherPanel!=null)launcherPanel.Close(); if (marketPanel != null) marketPanel.Close(); if (stashPanel != null) stashPanel.Close(); if (panel != null) panel.Close(); if (pet != null) pet.Close(); app.Shutdown(); }
     }
 }
