@@ -100,6 +100,37 @@ momoRouter.get("/members", requireMember, asyncHandler(async (_req, res) => {
   const members = await memberRepo.list();const skins = await momoRepo.getSkins(members.map(x => x.id));res.json(members.map(member => publicMember(member, skins[member.id])));
 }));
 
+async function publicGroup(group:any){
+  const ids:string[]=Array.isArray(group.memberIds)?group.memberIds.map(String):[];const members=(await Promise.all(ids.map(id=>memberRepo.getById(id)))).filter(Boolean);const skins=await momoRepo.getSkins(members.map((x:any)=>x.id));
+  return {...group,members:members.map((member:any)=>publicMember(member,skins[member.id]))};
+}
+
+momoRouter.get("/groups",requireMember,asyncHandler(async(_req,res)=>{
+  const groups=await momoRepo.groupsFor(String(res.locals.memberId));res.json(await Promise.all(groups.map(publicGroup)));
+}));
+
+momoRouter.post("/groups",requireMember,asyncHandler(async(req,res)=>{
+  const ownerId=String(res.locals.memberId),name=String(req.body?.name||"").trim().slice(0,30);const requested:string[]=Array.isArray(req.body?.memberIds)?req.body.memberIds.map((value:unknown)=>String(value)):[];
+  if(name.length<2){res.status(400).json({error:"小组名称至少 2 个字"});return;}const memberIds:string[]=Array.from(new Set<string>(requested.filter(id=>id&&id!==ownerId))).slice(0,49);
+  const valid=(await Promise.all(memberIds.map(id=>memberRepo.getById(id)))).filter(Boolean).map((x:any)=>x.id);const group=await momoRepo.createGroup(ownerId,name,valid);res.status(201).json(await publicGroup(group));
+}));
+
+momoRouter.get("/groups/:id/messages",requireMember,asyncHandler(async(req,res)=>{
+  const memberId=String(res.locals.memberId),group=await momoRepo.getGroup(req.params.id);if(!group||!group.memberIds.includes(memberId)){res.status(404).json({error:"小组不存在或你还未加入"});return;}res.json(await momoRepo.groupMessages(group.id));
+}));
+
+momoRouter.post("/groups/:id/messages",requireMember,asyncHandler(async(req,res)=>{
+  const senderId=String(res.locals.memberId),group=await momoRepo.getGroup(req.params.id);if(!group||!group.memberIds.includes(senderId)){res.status(404).json({error:"小组不存在或你还未加入"});return;}
+  const content=String(req.body?.content||"").trim();const attachments=Array.isArray(req.body?.attachments)?req.body.attachments.filter((x:any)=>x&&String(x.url||"").trim()).slice(0,MOMO_MAX_FILES).map((x:any)=>({name:String(x.name||"文件").slice(0,160),url:String(x.url),type:String(x.type||"application/octet-stream"),size:Number(x.size)||0})):[];
+  if(!content&&!attachments.length){res.status(400).json({error:"消息至少要有文字或文件"});return;}if(content.length>1000){res.status(400).json({error:"消息最多 1000 个字"});return;}const sender=await memberRepo.getById(senderId);if(!sender){res.status(404).json({error:"账号不存在"});return;}
+  const provided=String(req.body?.skinId||"").trim(),skinId=provided?safeSkin(provided):await momoRepo.getSkin(senderId);const message=await momoRepo.createGroupMessage(group,{senderId,senderNickname:sender.nickname,senderSkinId:skinId,content,attachments});res.status(201).json(message);
+}));
+
+// 换肤：部分网关/反向代理会拦截 PATCH，所以同时暴露 POST，客户端统一走 POST。
+momoRouter.post("/profile", requireMember, asyncHandler(async (req, res) => {
+  const skinId = safeSkin(req.body?.skinId);await momoRepo.setSkin(String(res.locals.memberId), skinId);res.json({ ok: true, skinId });
+}));
+
 momoRouter.patch("/profile", requireMember, asyncHandler(async (req, res) => {
   const skinId = safeSkin(req.body?.skinId);await momoRepo.setSkin(String(res.locals.memberId), skinId);res.json({ ok: true, skinId });
 }));
@@ -136,7 +167,11 @@ momoRouter.post("/messages", requireMember, asyncHandler(async (req, res) => {
   if (!content && !attachments.length) { res.status(400).json({ error: "信件至少要有留言或文件" });return; }
   if (content.length > 1000) { res.status(400).json({ error: "留言最多 1000 个字" });return; }
   const [sender, receiver] = await Promise.all([memberRepo.getById(senderId), memberRepo.getById(receiverId)]);if (!sender || !receiver) { res.status(404).json({ error: "联系人不存在" });return; }
-  const message = await momoRepo.createMessage({ senderId, receiverId, senderNickname: sender.nickname, receiverNickname: receiver.nickname, senderSkinId: await momoRepo.getSkin(senderId), content, attachments });res.status(201).json(message);
+  // 发送时携带的 skinId 优先：即使换肤接口没及时同步，收件人也总能看到发送方当前的皮肤。
+  const providedSkinId = String(req.body?.skinId || "").trim();
+  const senderSkinId = providedSkinId ? safeSkin(providedSkinId) : await momoRepo.getSkin(senderId);
+  if (providedSkinId) await momoRepo.setSkin(senderId, senderSkinId);
+  const message = await momoRepo.createMessage({ senderId, receiverId, senderNickname: sender.nickname, receiverNickname: receiver.nickname, senderSkinId, content, attachments });res.status(201).json(message);
 }));
 
 momoRouter.get("/messages/inbox", requireMember, asyncHandler(async (req, res) => {

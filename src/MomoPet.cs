@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
@@ -88,6 +89,14 @@ namespace MomoPetApp
         static Mutex mutex;
         static EventWaitHandle activationEvent;
         static RegisteredWaitHandle activationRegistration;
+
+        // 统一把异常落到一个日志里，方便事后定位“闪退”到底出在哪条线程上。
+        static void MomoLog(string scope, Exception error)
+        {
+            if(error==null)return;
+            try{string dir=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MomoPet");Directory.CreateDirectory(dir);File.AppendAllText(Path.Combine(dir,"ui-errors.log"),DateTime.Now.ToString("o")+"\t["+scope+"]\t"+error+Environment.NewLine,Encoding.UTF8);}catch{}
+        }
+
         [STAThread]
         public static void Main()
         {
@@ -101,8 +110,20 @@ namespace MomoPetApp
             // AI 拆图是外部接口返回的多张大图，任何 UI 解码/绑定异常都不能直接结束桌宠进程。
             app.DispatcherUnhandledException += delegate(object sender, DispatcherUnhandledExceptionEventArgs e)
             {
-                try { File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MomoPet", "ui-errors.log"), DateTime.Now.ToString("o")+"\t"+e.Exception+Environment.NewLine, Encoding.UTF8); } catch { }
+                MomoLog("ui", e.Exception);
                 e.Handled = true;
+            };
+            // 后台线程（网络回调 / 本地索引 / OCR / 行情）里抛出的异常不会经过 Dispatcher，
+            // 不兜住就会直接结束整个进程，这正是“用着用着就闪退”的主因：先记日志保住现场。
+            AppDomain.CurrentDomain.UnhandledException += delegate(object sender, UnhandledExceptionEventArgs e)
+            {
+                MomoLog("appdomain", e.ExceptionObject as Exception);
+            };
+            // .NET 4 上未被观察的 Task 异常会在 GC 时终结进程，这里标记为已观察，避免无谓闪退。
+            TaskScheduler.UnobservedTaskException += delegate(object sender, UnobservedTaskExceptionEventArgs e)
+            {
+                MomoLog("task", e.Exception);
+                e.SetObserved();
             };
             var controller = new PetController(app);
             controller.Start();
@@ -784,7 +805,7 @@ namespace MomoPetApp
                 stashItems.Insert(0,item);
                 var client = new System.Net.WebClient(); client.Headers[System.Net.HttpRequestHeader.UserAgent] = "MomoPet/1.0";
                 client.DownloadDataCompleted += delegate(object sender, System.Net.DownloadDataCompletedEventArgs e) {
-                    app.Dispatcher.BeginInvoke(new Action(delegate {
+                    UiPost(new Action(delegate {
                         try {
                             if (e.Cancelled || e.Error != null) throw e.Error ?? new IOException("下载被取消");
                             if (e.Result == null || e.Result.Length == 0 || e.Result.Length > 15*1024*1024) throw new InvalidDataException("图片为空或超过 15 MB");
@@ -1118,7 +1139,7 @@ namespace MomoPetApp
             if(marketFetchInFlight) return;
             string key=LoadWindKey();
             if(String.IsNullOrEmpty(key)) { if(userInitiated) ShowMarketToast("尚未配置", "请先在“大盘监控”里填写 Wind API Key。"); return; }
-            string skillDir=Path.Combine(root,".agents","skills","wind-mcp-skill");
+            string skillDir=EmbeddedRuntime.ResolveSkillDirectory(Path.Combine(".agents","skills","wind-mcp-skill"),root);
             string cli=Path.Combine(skillDir,"scripts","cli.mjs");
             if(!File.Exists(cli)) { SetMarketStatusText("Wind 数据 skill 未安装"); return; }
             marketFetchInFlight=true; lastMarketFetch=DateTime.Now;
@@ -1133,22 +1154,23 @@ namespace MomoPetApp
                     args["windcode"]="上证指数,深证成指,创业板指,中证红利,科创综指";
                     args["indexes"]="最新交易日,交易时间,中文简称,最新成交价,前收盘价,今日开盘价,今日最高价,今日最低价,涨跌幅,成交量,成交额,交易状态";
                     File.WriteAllText(requestPath,json.Serialize(args),new UTF8Encoding(false));
-                    var psi=new ProcessStartInfo { FileName="node", WorkingDirectory=skillDir, UseShellExecute=false,
+                    var psi=new ProcessStartInfo { WorkingDirectory=skillDir, UseShellExecute=false,
                         CreateNoWindow=true, RedirectStandardOutput=true, RedirectStandardError=true,
                         StandardOutputEncoding=Encoding.UTF8, StandardErrorEncoding=Encoding.UTF8,
                         Arguments="\""+cli+"\" call index_data get_index_price_indicators \"@scripts/"+requestName+"\"" };
+                    EmbeddedRuntime.UseBundledNode(psi,root);
                     psi.EnvironmentVariables["WIND_API_KEY"]=key;
                     string output, errors; int exitCode;
                     using(var process=Process.Start(psi)) { output=process.StandardOutput.ReadToEnd(); errors=process.StandardError.ReadToEnd(); process.WaitForExit(); exitCode=process.ExitCode; }
                     try { File.WriteAllText(Path.Combine(dataDir,"market-last-response.json"),output,new UTF8Encoding(false)); } catch { }
-                    app.Dispatcher.BeginInvoke(new Action(delegate {
+                    UiPost(new Action(delegate {
                         marketFetchInFlight=false;
                         if(exitCode!=0) { HandleMarketError(output,errors,userInitiated); return; }
                         try { latestMarket=ParseMarketOutput(output); HandleMarketSnapshot(userInitiated,scheduleEvent); }
                         catch(Exception ex) { SetMarketStatusText("Wind 行情处理失败："+ex.Message); if(userInitiated) ShowMarketToast("行情处理失败",ex.Message); }
                     }));
                 } catch(Exception ex) {
-                    app.Dispatcher.BeginInvoke(new Action(delegate { marketFetchInFlight=false; SetMarketStatusText("连接失败："+ex.Message); }));
+                    UiPost(new Action(delegate { marketFetchInFlight=false; SetMarketStatusText("连接失败："+ex.Message); }));
                 } finally { key=null; try { if(File.Exists(requestPath)) File.Delete(requestPath); } catch { } }
             });
         }

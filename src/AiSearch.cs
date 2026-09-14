@@ -357,21 +357,22 @@ namespace MomoPetApp
 
         void RunAiHelper(Dictionary<string,object> request,string llmKey,string windKey,Action<Dictionary<string,object>> completed)
         {
-            string helper=EmbeddedRuntime.ResolveFile(Path.Combine("wind_bridge","wind_ai_search.mjs"),root); string requestPath=Path.Combine(dataDir,"ai-request-"+Guid.NewGuid().ToString("N")+".json");
+            string helper=EmbeddedRuntime.ResolveFile(Path.Combine("wind_bridge","wind_ai_search.mjs"),root); string requestPath=Path.Combine(dataDir,"ai-request-"+Guid.NewGuid().ToString("N")+".json"); string skillRoot=EmbeddedRuntime.SkillRoot(root);
             ThreadPool.QueueUserWorkItem(delegate {
                 try {
                     File.WriteAllText(requestPath,json.Serialize(request),new UTF8Encoding(false));
-                    var psi=new ProcessStartInfo { FileName="node",WorkingDirectory=root,UseShellExecute=false,CreateNoWindow=true,
+                    var psi=new ProcessStartInfo { WorkingDirectory=skillRoot,UseShellExecute=false,CreateNoWindow=true,
                         RedirectStandardOutput=true,RedirectStandardError=true,StandardOutputEncoding=Encoding.UTF8,StandardErrorEncoding=Encoding.UTF8,
                         Arguments="\""+helper+"\" \""+requestPath+"\"" };
+                    EmbeddedRuntime.UseBundledNode(psi,root);
                     psi.EnvironmentVariables["LLM_API_KEY"]=llmKey??""; psi.EnvironmentVariables["WIND_API_KEY"]=windKey??"";
                     string output,errors; int code;
                     using(var process=Process.Start(psi)) { aiProcess=process; output=process.StandardOutput.ReadToEnd(); errors=process.StandardError.ReadToEnd(); process.WaitForExit(); code=process.ExitCode; }
                     aiProcess=null;
                     Dictionary<string,object> parsed=null; try { parsed=json.Deserialize<Dictionary<string,object>>(output); } catch { }
                     if(parsed==null) parsed=new Dictionary<string,object> { {"ok",false},{"error",String.IsNullOrWhiteSpace(errors)?"AI 搜索返回无法解析":errors.Trim()} };
-                    app.Dispatcher.BeginInvoke(new Action(delegate { completed(parsed); }));
-                } catch(Exception ex) { app.Dispatcher.BeginInvoke(new Action(delegate { completed(new Dictionary<string,object>{{"ok",false},{"error",ex.Message}}); })); }
+                    UiPost(new Action(delegate { completed(parsed); }));
+                } catch(Exception ex) { UiPost(new Action(delegate { completed(new Dictionary<string,object>{{"ok",false},{"error",ex.Message}}); })); }
                 finally { llmKey=null; windKey=null; try { if(File.Exists(requestPath)) File.Delete(requestPath); } catch { } }
             });
         }

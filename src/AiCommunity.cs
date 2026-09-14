@@ -71,10 +71,11 @@ namespace MomoPetApp
             LoadCommunityList(CommunityDataPath("community-posts"),communityPosts);
             LoadCommunityList(CommunityDataPath("community-apps"),communityApps);
             LoadCommunityList(CommunityDataPath("community-resources"),communityResources);
-            // 不再预置任何演示数据：社区内容只显示真实产生的内容。
-            // 同时清掉旧版本首次运行时写进本机的预置假数据：
-            // 帖子只保留本机真实发布的（作者为“我”），应用和资源只保留本地导入的（带文件路径）。
-            int purged=communityPosts.RemoveAll(x=>x.Author!="我")+communityApps.RemoveAll(x=>String.IsNullOrWhiteSpace(x.Path))+communityResources.RemoveAll(x=>String.IsNullOrWhiteSpace(x.Path));
+            // 只迁移删除旧版本明确写入的演示条目，绝不误删用户自己创建或以后从云端同步的内容。
+            string[] fakePosts={"今天用 AI 把周报整理时间缩短了一半","一个好用的 AI 工具，应该先让人感到轻松","本周值得收藏的 3 个研究 Skill"};
+            string[] fakeApps={"灵感画板","会议纪要助手","数据图表工坊","提示词调试器"};
+            string[] fakeResources={"研究资料溯源","会议行动项提取","柔和办公图标包","周报版式参考"};
+            int purged=communityPosts.RemoveAll(x=>fakePosts.Contains(x.Title))+communityApps.RemoveAll(x=>fakeApps.Contains(x.Name))+communityResources.RemoveAll(x=>fakeResources.Contains(x.Name));
             if(purged>0)SaveCommunityData();
         }
 
@@ -129,7 +130,7 @@ namespace MomoPetApp
             communityPanel=new Window{Title="AI 社区",Width=1220,Height=790,MinWidth=980,MinHeight=650,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.CanResize,ShowInTaskbar=false,AllowsTransparency=true,Background=Brushes.Transparent,Topmost=pet.Topmost};Ui.StyleWindow(communityPanel);
             var shell=new Border{CornerRadius=new CornerRadius(20),Padding=new Thickness(22)};Ui.StyleCard(shell);var root=new Grid();root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.Children.Add(BuildHubHeader(communityPanel,"☕","AI 社区","交流经验、关注同行，也分享正在发生的好想法",ShowCreatePostDialog,"写分享"));
             var layout=new Grid{Background=Ui.Paper};layout.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(184)});layout.ColumnDefinitions.Add(new ColumnDefinition());layout.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(252)});Grid.SetRow(layout,1);root.Children.Add(layout);
-            var nav=new StackPanel{Margin=new Thickness(0,12,16,0)};nav.Children.Add(Ui.SectionLabel("社区"));nav.Children.Add(HubNav("  动态",delegate{communityMode="动态";RefreshCommunityFeed();}));nav.Children.Add(HubNav("  小组",delegate{communityMode="小组";RefreshCommunityFeed();}));nav.Children.Add(HubNav("  周报",delegate{communityMode="周报";RefreshCommunityFeed();}));nav.Children.Add(HubNav("  我的收藏",delegate{communityMode="收藏";RefreshCommunityFeed();}));
+            var nav=new StackPanel{Margin=new Thickness(0,12,16,0)};nav.Children.Add(Ui.SectionLabel("社区"));nav.Children.Add(HubNav("  动态",delegate{communityMode="动态";RefreshCommunityFeed();}));nav.Children.Add(HubNav("  小组",delegate{communityMode="小组";RefreshCommunityFeed();}));nav.Children.Add(HubNav("  我的收藏",delegate{communityMode="收藏";RefreshCommunityFeed();}));
             nav.Children.Add(HubNav("  💌 账号与来信",delegate{OpenMessengerPanel();}));
             var note=new StackPanel();note.Children.Add(HubText("安静交流角",13,Ui.Ink,FontWeights.SemiBold));note.Children.Add(HubText("先交换方法，再比较结果。让每次分享都能被继续使用。",11.5,Ui.SubInk,FontWeights.Normal));nav.Children.Add(HubCard(note,new Thickness(0,20,0,0),new Thickness(14)));layout.Children.Add(nav);
             var center=new Grid{Margin=new Thickness(0,12,16,0)};center.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});center.RowDefinitions.Add(new RowDefinition());var centerTop=new Grid{Margin=new Thickness(0,0,0,10)};centerTop.ColumnDefinitions.Add(new ColumnDefinition());centerTop.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(270)});communityViewTitle=Ui.Title("社区动态",18);centerTop.Children.Add(communityViewTitle);communitySearchBox=new TextBox{Height=38,VerticalContentAlignment=VerticalAlignment.Center,ToolTip="搜索标题、内容或作者"};communitySearchBox.TextChanged+=delegate{RefreshCommunityFeed();};Grid.SetColumn(communitySearchBox,1);centerTop.Children.Add(communitySearchBox);center.Children.Add(centerTop);communityFeed=new StackPanel();var feedScroll=new ScrollViewer{Content=communityFeed,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};Grid.SetRow(feedScroll,1);center.Children.Add(feedScroll);Grid.SetColumn(center,1);layout.Children.Add(center);
@@ -142,8 +143,9 @@ namespace MomoPetApp
             if(communityFeed==null)return;communityFeed.Children.Clear();communityRightRail.Children.Clear();communityViewTitle.Text=communityMode=="动态"?"社区动态":(communityMode=="收藏"?"我的收藏":communityMode);
             string query=communitySearchBox==null?"":(communitySearchBox.Text??"").Trim();IEnumerable<CommunityPost> items=communityPosts;
             if(communityMode=="收藏")items=items.Where(x=>x.Favorite);if(query.Length>0)items=items.Where(x=>(x.Title+" "+x.Body+" "+x.Author+" "+x.Tags).IndexOf(query,StringComparison.OrdinalIgnoreCase)>=0);
-            if(communityMode=="小组"){communityFeed.Children.Add(BuildEmptyState("还没有小组","等真实成员多起来后，再一起建立小组。"));}
-            else if(communityMode=="周报"){if(communityPosts.Count==0)communityFeed.Children.Add(BuildEmptyState("还没有周报","发布第一条分享后，这里会按主题自动汇总。"));else foreach(var group in communityPosts.GroupBy(x=>x.Category)){var body=new StackPanel();body.Children.Add(HubText(group.Key,12,Ui.AccentDeep,FontWeights.SemiBold));body.Children.Add(HubText(group.Count()+" 条分享，"+group.Sum(x=>x.Likes)+" 次点赞",20,Ui.Ink,FontWeights.SemiBold));body.Children.Add(HubText(group.OrderByDescending(x=>x.Likes).First().Title,13,Ui.SubInk,FontWeights.Normal));communityFeed.Children.Add(HubCard(body,new Thickness(0,0,0,10),new Thickness(18)));}}
+            if(communityMode=="小组"){
+                var empty=new StackPanel{HorizontalAlignment=HorizontalAlignment.Center,Margin=new Thickness(20,62,20,62)};empty.Children.Add(HubText("🐾",28,Ui.SubInk,FontWeights.Normal));empty.Children.Add(HubText("小组已经移到来信",16,Ui.Ink,FontWeights.SemiBold));empty.Children.Add(HubText("在那里可以新建小组、邀请联系人并直接聊天。",12,Ui.SubInk,FontWeights.Normal));var open=MakeButton("打开账号与来信",Ui.Accent);open.Foreground=Brushes.White;open.HorizontalAlignment=HorizontalAlignment.Center;open.Margin=new Thickness(0,16,0,0);open.Click+=delegate{OpenMessengerPanel();};empty.Children.Add(open);communityFeed.Children.Add(HubCard(empty,new Thickness(0),new Thickness(20)));
+            }
             else{foreach(var post in items)communityFeed.Children.Add(BuildCommunityPostCard(post));if(!items.Any())communityFeed.Children.Add(BuildEmptyState("这里还没有内容","社区内容保存在本机，写下第一条分享就会出现在这里。"));}
             var stats=new StackPanel();stats.Children.Add(HubText("我的社区",13,Ui.SubInk,FontWeights.SemiBold));stats.Children.Add(HubText(communityPosts.Count+"",28,Ui.Ink,FontWeights.SemiBold));stats.Children.Add(HubText("条分享 · 内容保存在本机",11.5,Ui.SubInk,FontWeights.Normal));communityRightRail.Children.Add(HubCard(stats,new Thickness(0,0,0,10),new Thickness(16)));
             var tags=communityPosts.SelectMany(x=>(x.Tags??"").Split(new[]{'·'},StringSplitOptions.RemoveEmptyEntries)).Select(x=>x.Trim()).Where(x=>x.Length>0).Distinct().Take(6).ToList();

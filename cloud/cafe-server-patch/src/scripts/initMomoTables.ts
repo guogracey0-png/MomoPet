@@ -7,6 +7,9 @@ const tables = [
   { tableName: MOMO_TABLES.profiles, primaryKey: [{ name: "memberId", type: PK.STRING }] },
   { tableName: MOMO_TABLES.inbox, primaryKey: [{ name: "receiverId", type: PK.STRING }, { name: "createdAt", type: PK.STRING }, { name: "id", type: PK.STRING }] },
   { tableName: MOMO_TABLES.outbox, primaryKey: [{ name: "senderId", type: PK.STRING }, { name: "createdAt", type: PK.STRING }, { name: "id", type: PK.STRING }] },
+  { tableName: MOMO_TABLES.groups, primaryKey: [{ name: "id", type: PK.STRING }] },
+  { tableName: MOMO_TABLES.groupMembers, primaryKey: [{ name: "memberId", type: PK.STRING }, { name: "groupId", type: PK.STRING }] },
+  { tableName: MOMO_TABLES.groupMessages, primaryKey: [{ name: "groupId", type: PK.STRING }, { name: "createdAt", type: PK.STRING }, { name: "id", type: PK.STRING }] },
 ];
 
 function exists(tableName: string): Promise<boolean> { return new Promise(resolve => client.describeTable({ tableName }, (error: Error | null) => resolve(!error))); }

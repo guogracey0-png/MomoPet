@@ -15,4 +15,4 @@ import { momoRouter } from "./routes/momo.js";
 app.use("/api/momo", momoRouter);
 ```
 
-部署前执行 `npx tsx src/scripts/initMomoTables.ts` 创建四张增量表；该脚本不会删除或修改旧表。
+部署前执行 `npx tsx src/scripts/initMomoTables.ts` 创建来信与小组所需的七张增量表；该脚本不会删除或修改旧表。

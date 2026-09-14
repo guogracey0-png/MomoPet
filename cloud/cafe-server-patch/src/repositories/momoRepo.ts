@@ -8,6 +8,9 @@ export const MOMO_TABLES = {
   profiles: `${TABLE_PREFIX}momo_profiles`,
   inbox: `${TABLE_PREFIX}momo_messages_inbox`,
   outbox: `${TABLE_PREFIX}momo_messages_outbox`,
+  groups: `${TABLE_PREFIX}momo_groups`,
+  groupMembers: `${TABLE_PREFIX}momo_group_members`,
+  groupMessages: `${TABLE_PREFIX}momo_group_messages`,
 } as const;
 
 const allowedSkins = new Set([
@@ -41,6 +44,15 @@ export type MomoMessage = {
   deliveredAt: string;
   readAt: string;
 };
+
+export type MomoGroup = { id: string; name: string; ownerId: string; memberIds: string[]; createdAt: string };
+export type MomoGroupMessage = { id: string; groupId: string; senderId: string; senderNickname: string; senderSkinId: string; content: string; attachments: MomoAttachment[]; createdAt: string };
+
+function parseStrings(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string" && value.trim()) { try { const parsed=JSON.parse(value);if(Array.isArray(parsed))return parsed.map(String); } catch {} }
+  return [];
+}
 
 function messageAttrs(message: MomoMessage, primaryMember: "senderId" | "receiverId") {
   const values = [
@@ -145,5 +157,32 @@ export const momoRepo = {
       updateRow(MOMO_TABLES.outbox, [pk("senderId", message.senderId), pk("createdAt", message.createdAt), pk("id", message.id)], changes),
     ]);
     return message;
+  },
+
+  async createGroup(ownerId: string, name: string, memberIds: string[]) {
+    const group: MomoGroup={id:generateId("grp"),name,ownerId,memberIds:Array.from(new Set([ownerId,...memberIds])),createdAt:new Date().toISOString()};
+    await putRow(MOMO_TABLES.groups,[pk("id",group.id)],[attr("name",group.name),attr("ownerId",group.ownerId),attr("memberIds",group.memberIds),attr("createdAt",group.createdAt)]);
+    await Promise.all(group.memberIds.map(memberId=>putRow(MOMO_TABLES.groupMembers,[pk("memberId",memberId),pk("groupId",group.id)],[attr("joinedAt",group.createdAt),attr("role",memberId===ownerId?"owner":"member")])));
+    return group;
+  },
+
+  async getGroup(id: string) {
+    const row=await getRow(MOMO_TABLES.groups,[pk("id",id)]);if(!row)return null;
+    return {id:String(row.id||id),name:String(row.name||""),ownerId:String(row.ownerId||""),memberIds:parseStrings(row.memberIds),createdAt:String(row.createdAt||"")} as MomoGroup;
+  },
+
+  async groupsFor(memberId: string) {
+    const rows=await getRange(MOMO_TABLES.groupMembers,[pk("memberId",memberId),pk("groupId",INF_MIN)],[pk("memberId",memberId),pk("groupId",INF_MAX)]);
+    const groups=await Promise.all(rows.map(row=>this.getGroup(String(row.groupId||""))));return groups.filter(Boolean) as MomoGroup[];
+  },
+
+  async createGroupMessage(group: MomoGroup,input: Omit<MomoGroupMessage,"id"|"createdAt"|"groupId">) {
+    const message:MomoGroupMessage={...input,id:generateId("gmsg"),groupId:group.id,createdAt:new Date().toISOString()};
+    await putRow(MOMO_TABLES.groupMessages,[pk("groupId",message.groupId),pk("createdAt",message.createdAt),pk("id",message.id)],[attr("senderId",message.senderId),attr("senderNickname",message.senderNickname),attr("senderSkinId",message.senderSkinId),attr("content",message.content),attr("attachments",message.attachments||[])]);return message;
+  },
+
+  async groupMessages(groupId:string) {
+    const rows=await getRange(MOMO_TABLES.groupMessages,[pk("groupId",groupId),pk("createdAt",INF_MIN),pk("id",INF_MIN)],[pk("groupId",groupId),pk("createdAt",INF_MAX),pk("id",INF_MAX)]);
+    return rows.map(row=>({id:String(row.id||""),groupId:String(row.groupId||groupId),senderId:String(row.senderId||""),senderNickname:String(row.senderNickname||""),senderSkinId:safeSkin(row.senderSkinId),content:String(row.content||""),attachments:parseAttachments(row.attachments),createdAt:String(row.createdAt||"")} as MomoGroupMessage)).slice(-300);
   },
 };
