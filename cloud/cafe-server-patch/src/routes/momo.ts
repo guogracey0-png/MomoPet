@@ -1,9 +1,59 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
+import multer from "multer";
+import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
+import crypto from "node:crypto";
 import { memberRepo } from "../repositories/memberRepo.js";
 import { momoRepo, safeSkin } from "../repositories/momoRepo.js";
+import { saveFile } from "../db/storage.js";
+import { fixFilename } from "../utils/filename.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 export const momoRouter = Router();
+
+// 信件附件：临时落盘后流式上传到 OSS / 本地静态目录，消息里只保存元数据。
+const MOMO_TMP_DIR = path.join(os.tmpdir(), "momo-uploads");
+if (!fs.existsSync(MOMO_TMP_DIR)) fs.mkdirSync(MOMO_TMP_DIR, { recursive: true });
+
+const MOMO_ALLOWED_EXT = [
+  ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg",
+  ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx",
+  ".txt", ".md", ".csv", ".rtf", ".zip", ".rar", ".7z",
+  ".yaml", ".yml", ".json", ".toml", ".py", ".ts", ".js", ".tsx", ".jsx", ".skill",
+  ".exe", ".apk", ".mp3", ".mp4", ".wav", ".mov", ".avi",
+];
+
+export const MOMO_MAX_FILES = 9;
+
+const momoUpload = multer({
+  storage: multer.diskStorage({
+    destination: MOMO_TMP_DIR,
+    filename: (_req, file, cb) => {
+      cb(null, crypto.randomBytes(12).toString("hex") + path.extname(file.originalname));
+    },
+  }),
+  limits: { fileSize: 500 * 1024 * 1024, files: MOMO_MAX_FILES },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!MOMO_ALLOWED_EXT.includes(ext)) { cb(new Error(`不支持的文件类型: ${ext}`)); return; }
+    cb(null, true);
+  },
+}).array("files", MOMO_MAX_FILES);
+
+// multer 的错误统一转成 JSON，避免 500 堆栈直接暴露给客户端。
+function runMomoUpload(req: Request, res: Response, next: NextFunction) {
+  momoUpload(req, res, (err: any) => {
+    if (!err) { next(); return; }
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") { res.status(413).json({ error: "文件过大，最大 500MB" }); return; }
+      if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") { res.status(400).json({ error: `一次最多发送 ${MOMO_MAX_FILES} 个文件` }); return; }
+      res.status(400).json({ error: err.message }); return;
+    }
+    if (String(err?.message || "").startsWith("不支持的文件类型")) { res.status(400).json({ error: err.message }); return; }
+    next(err);
+  });
+}
 
 function bearer(req: Request) {
   const value = String(req.headers.authorization || "");
@@ -54,12 +104,39 @@ momoRouter.patch("/profile", requireMember, asyncHandler(async (req, res) => {
   const skinId = safeSkin(req.body?.skinId);await momoRepo.setSkin(String(res.locals.memberId), skinId);res.json({ ok: true, skinId });
 }));
 
+momoRouter.post("/files", requireMember, runMomoUpload, asyncHandler(async (req, res) => {
+  const files = (req.files as Express.Multer.File[]) || [];
+  if (!files.length) { res.status(400).json({ error: "未收到文件（字段名应为 files）" });return; }
+  const memberId = String(res.locals.memberId);
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const uploaded = [];
+  for (const file of files) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mime = file.mimetype || "application/octet-stream";
+    const key = `momo/${memberId}/${ym}/${crypto.randomBytes(8).toString("hex")}${ext}`;
+    const { url } = await saveFile(key, file.path, mime);
+    try { fs.unlinkSync(file.path); } catch {}
+    uploaded.push({ name: fixFilename(file.originalname), url, type: mime, size: file.size });
+  }
+  res.status(201).json({ files: uploaded });
+}));
+
 momoRouter.post("/messages", requireMember, asyncHandler(async (req, res) => {
   const senderId = String(res.locals.memberId), receiverId = String(req.body?.receiverId || ""), content = String(req.body?.content || "").trim();
+  const attachments = Array.isArray(req.body?.attachments)
+    ? req.body.attachments.filter((x: any) => x && String(x.url || "").trim()).slice(0, MOMO_MAX_FILES).map((x: any) => ({
+        name: String(x.name || "文件").slice(0, 160),
+        url: String(x.url),
+        type: String(x.type || "application/octet-stream"),
+        size: Number(x.size) || 0,
+      }))
+    : [];
   if (!receiverId || receiverId === senderId) { res.status(400).json({ error: "请选择其他联系人" });return; }
-  if (!content || content.length > 1000) { res.status(400).json({ error: "消息需为 1-1000 个字" });return; }
+  if (!content && !attachments.length) { res.status(400).json({ error: "信件至少要有留言或文件" });return; }
+  if (content.length > 1000) { res.status(400).json({ error: "留言最多 1000 个字" });return; }
   const [sender, receiver] = await Promise.all([memberRepo.getById(senderId), memberRepo.getById(receiverId)]);if (!sender || !receiver) { res.status(404).json({ error: "联系人不存在" });return; }
-  const message = await momoRepo.createMessage({ senderId, receiverId, senderNickname: sender.nickname, receiverNickname: receiver.nickname, senderSkinId: await momoRepo.getSkin(senderId), content });res.status(201).json(message);
+  const message = await momoRepo.createMessage({ senderId, receiverId, senderNickname: sender.nickname, receiverNickname: receiver.nickname, senderSkinId: await momoRepo.getSkin(senderId), content, attachments });res.status(201).json(message);
 }));
 
 momoRouter.get("/messages/inbox", requireMember, asyncHandler(async (req, res) => {

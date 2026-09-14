@@ -24,6 +24,9 @@ export function safeSkin(value: unknown): string {
   return allowedSkins.has(skin) ? skin : "default";
 }
 
+// 信件随附的文件：文件本身存在 OSS / 本地静态目录，消息里只保存元数据。
+export type MomoAttachment = { name: string; url: string; type: string; size: number };
+
 export type MomoMessage = {
   id: string;
   senderId: string;
@@ -32,6 +35,7 @@ export type MomoMessage = {
   receiverNickname: string;
   senderSkinId: string;
   content: string;
+  attachments: MomoAttachment[];
   createdAt: string;
   status: "sent" | "delivered" | "read";
   deliveredAt: string;
@@ -43,16 +47,27 @@ function messageAttrs(message: MomoMessage, primaryMember: "senderId" | "receive
     attr("senderId", message.senderId), attr("receiverId", message.receiverId),
     attr("senderNickname", message.senderNickname), attr("receiverNickname", message.receiverNickname),
     attr("senderSkinId", message.senderSkinId), attr("content", message.content),
+    attr("attachments", message.attachments || []),
     attr("status", message.status), attr("deliveredAt", message.deliveredAt), attr("readAt", message.readAt),
   ];
   return values.filter(value => !Object.prototype.hasOwnProperty.call(value, primaryMember));
+}
+
+// attachments 以 JSON 字符串落库；历史数据没有该属性时回退成空数组。
+function parseAttachments(value: unknown): MomoAttachment[] {
+  if (Array.isArray(value)) return value as MomoAttachment[];
+  if (typeof value === "string" && value.trim()) {
+    try { const parsed = JSON.parse(value);if (Array.isArray(parsed)) return parsed as MomoAttachment[]; } catch {}
+  }
+  return [];
 }
 
 function fromRow(row: Record<string, any>): MomoMessage {
   return {
     id: String(row.id || ""), senderId: String(row.senderId || ""), receiverId: String(row.receiverId || ""),
     senderNickname: String(row.senderNickname || ""), receiverNickname: String(row.receiverNickname || ""),
-    senderSkinId: safeSkin(row.senderSkinId), content: String(row.content || ""), createdAt: String(row.createdAt || ""),
+    senderSkinId: safeSkin(row.senderSkinId), content: String(row.content || ""), attachments: parseAttachments(row.attachments),
+    createdAt: String(row.createdAt || ""),
     status: (row.status || "sent") as MomoMessage["status"], deliveredAt: String(row.deliveredAt || ""), readAt: String(row.readAt || ""),
   };
 }
