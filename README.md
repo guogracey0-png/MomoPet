@@ -19,9 +19,9 @@ MomoPet 是一个原生 Windows 桌面提醒与 AI 办公桌宠。小猫负责�
 
 ## 运行
 
-发布版用户可双击 `启动博道咪.vbs`（也兼容 `启动毛毛.vbs`）。启动器会在同一目录中选择最新的 `MomoPet.exe` 或 `MomoPet.next-*.exe`。
+发布版用户只需下载并双击 `MomoPet-发布版.exe`。原有 `MomoPet.exe` 保留给已有用户继续使用。便携发布版无需安装 .NET SDK、Node.js、Python、Electron、浏览器内核或数据库，也无需复制素材文件夹。
 
-首次运行时，单文件程序会把必要的 OCR 助手和桥接脚本释放到 `%LOCALAPPDATA%\MomoPet\app`。
+首次运行时，单文件程序会自动把内置的 OCR 助手、便携 Node、AI 桥接脚本、合规规则和 Skill 运行文件释放到 `%LOCALAPPDATA%\MomoPet\app`。社区与 Momo 邮局使用内置云端地址；需要第三方付费模型或 Wind 授权的联网能力仍须使用相应账号或个人授权，程序不会把开发者的私人密钥写进公开 EXE。
 
 ## 从源码构建
 
@@ -53,7 +53,7 @@ build.ps1                    单文件构建入口
 
 ## 隐私与密钥
 
-API Key 和服务来源应由每位用户在应用设置中自行填写。请勿把真实密钥、内部地址、客户资料或本机数据提交到 Issue、Pull Request 或源码。
+第三方 API Key 由用户按需在应用设置中保存，并使用 Windows 用户级加密保护。公开 EXE 不内置开发者私人密钥；构建过程也会排除 Skill 请求缓存、更新状态与开发目录。请勿把真实密钥、内部地址、客户资料或本机数据提交到 Issue、Pull Request 或源码。
 
 ## 参与贡献
 

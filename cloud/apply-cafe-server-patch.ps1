@@ -9,6 +9,17 @@ $sourceRoot = Join-Path $CafeServer 'src'
 if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot 'index.ts'))) {
     throw "Cafe server source was not found: $CafeServer"
 }
+$backupRoot = Join-Path $CafeServer ('backup-before-momopet-community-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+$backupFiles = @('repositories\momoRepo.ts','routes\momo.ts','scripts\initMomoTables.ts','index.ts','desktop-entry.ts')
+foreach ($relative in $backupFiles) {
+    $existing = Join-Path $sourceRoot $relative
+    if (Test-Path -LiteralPath $existing) {
+        $backup = Join-Path $backupRoot $relative
+        New-Item -ItemType Directory -Path (Split-Path $backup -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $existing -Destination $backup
+    }
+}
 
 $copies = @(
     @('repositories\momoRepo.ts', 'repositories\momoRepo.ts'),
@@ -38,4 +49,4 @@ function Add-MomoRoute([string]$path) {
 
 Add-MomoRoute (Join-Path $sourceRoot 'index.ts')
 Add-MomoRoute (Join-Path $sourceRoot 'desktop-entry.ts')
-Write-Host 'MomoPet messaging patch was merged into the Cafe server source.'
+Write-Host "MomoPet messaging and community patch was merged. Backup: $backupRoot"

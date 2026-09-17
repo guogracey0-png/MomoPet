@@ -1220,7 +1220,7 @@ namespace MomoPetApp
         string LoadImageAiKey(bool text){return LoadImageAiKey(text,false);}
         string LoadImageAiKey(bool text,bool toApis){string file=toApis?(text?toApisTextKeyFile:toApisImageKeyFile):(text?imageTextKeyFile:imageModelKeyFile);string kind=toApis?"ToApis"+(text?"Text":"Image"):(text?"Text":"Image");try{if(!File.Exists(file))return null;return Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(file),ImageKeyEntropy(kind),DataProtectionScope.CurrentUser));}catch{return null;}}
         void SaveImageAiKey(bool text,string key,bool toApis){string file=toApis?(text?toApisTextKeyFile:toApisImageKeyFile):(text?imageTextKeyFile:imageModelKeyFile);string kind=toApis?"ToApis"+(text?"Text":"Image"):(text?"Text":"Image");byte[] plain=Encoding.UTF8.GetBytes(key);try{File.WriteAllBytes(file,ProtectedData.Protect(plain,ImageKeyEntropy(kind),DataProtectionScope.CurrentUser));}finally{Array.Clear(plain,0,plain.Length);}}
-        void SaveImageAiConfig(){File.WriteAllText(imageAiConfigFile,json.Serialize(imageAiConfig),Encoding.UTF8);}
+        void SaveImageAiConfig(){MomoStorage.WriteTextAtomic(imageAiConfigFile,json.Serialize(imageAiConfig),Encoding.UTF8);}
         List<string> SettingsModels(bool text){bool toApis=String.Equals(text?settingsTextProvider:settingsImageProvider,"ToApis",StringComparison.OrdinalIgnoreCase);return text?(toApis?imageAiConfig.ToApisTextModels:imageAiConfig.TextModels):(toApis?imageAiConfig.ToApisImageModels:imageAiConfig.ImageModels);}
         void CaptureSettingsChannel(bool text)
         {

@@ -207,13 +207,13 @@ namespace MomoPetApp
 
         void SaveProtectedLlmKey(string key)
         {
-            byte[] plain=Encoding.UTF8.GetBytes(key); try { File.WriteAllBytes(llmKeyFile,ProtectedData.Protect(plain,LlmEntropy(),DataProtectionScope.CurrentUser)); }
+            byte[] plain=Encoding.UTF8.GetBytes(key); try { MomoStorage.WriteBytesAtomic(llmKeyFile,ProtectedData.Protect(plain,LlmEntropy(),DataProtectionScope.CurrentUser)); }
             finally { Array.Clear(plain,0,plain.Length); }
         }
 
         void SaveLlmConfig()
         {
-            File.WriteAllText(llmConfigFile,json.Serialize(llmConfig),Encoding.UTF8);
+            MomoStorage.WriteTextAtomic(llmConfigFile,json.Serialize(llmConfig),Encoding.UTF8);
         }
 
         void SaveLlmSettings()
@@ -392,7 +392,7 @@ namespace MomoPetApp
             SaveTemplates(); RefreshTemplateCombo(); if(announce) aiStatusText.Text="已保存模板：“"+name+"”";
         }
 
-        void SaveTemplates() { try { File.WriteAllText(templatesFile,json.Serialize(promptTemplates),Encoding.UTF8); } catch { } }
+        void SaveTemplates() { try { MomoStorage.WriteTextAtomic(templatesFile,json.Serialize(promptTemplates),Encoding.UTF8); } catch { } }
         void RefreshTemplateCombo() { templateCombo.ItemsSource=null; templateCombo.ItemsSource=promptTemplates; if(promptTemplates.Count>0) templateCombo.SelectedIndex=0; }
         void ApplySelectedTemplate() { var item=templateCombo.SelectedItem as PromptTemplate; if(item!=null) { aiQuestionBox.Text=item.Content; templateNameBox.Text=item.Name; aiQuestionBox.Focus(); } }
         void DeleteSelectedTemplate() { var item=templateCombo.SelectedItem as PromptTemplate; if(item==null) return; promptTemplates.Remove(item); SaveTemplates(); RefreshTemplateCombo(); aiStatusText.Text="模板已删除"; }

@@ -22,6 +22,49 @@ using System.Windows.Threading;
 
 namespace MomoPetApp
 {
+    static class MomoPaths
+    {
+        public static string DataDir()
+        {
+            string custom=Environment.GetEnvironmentVariable("MOMOPET_DATA_DIR");
+            if(!String.IsNullOrWhiteSpace(custom))return Path.GetFullPath(custom);
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MomoPet");
+        }
+    }
+
+    // 用户状态一律先完整落到同目录临时文件，再替换正式文件。这样即使系统休眠、
+    // 意外结束进程或杀毒软件短暂占用文件，也不会把原来的 JSON 截断成空文件。
+    static class MomoStorage
+    {
+        public static void WriteTextAtomic(string path, string content, Encoding encoding)
+        {
+            WriteAtomic(path, delegate(string temporary) { File.WriteAllText(temporary, content, encoding); });
+        }
+
+        public static void WriteBytesAtomic(string path, byte[] content)
+        {
+            WriteAtomic(path, delegate(string temporary) { File.WriteAllBytes(temporary, content); });
+        }
+
+        static void WriteAtomic(string path, Action<string> write)
+        {
+            string directory=Path.GetDirectoryName(path);
+            if(!String.IsNullOrWhiteSpace(directory))Directory.CreateDirectory(directory);
+            string temporary=path+"."+Guid.NewGuid().ToString("N")+".tmp";
+            try
+            {
+                write(temporary);
+                if(File.Exists(path))
+                {
+                    try { File.Replace(temporary,path,path+".bak",true); }
+                    catch { File.Copy(temporary,path,true); File.Delete(temporary); }
+                }
+                else File.Move(temporary,path);
+            }
+            finally { try { if(File.Exists(temporary))File.Delete(temporary); } catch { } }
+        }
+    }
+
     public class TaskItem
     {
         public string Id { get; set; }
@@ -94,7 +137,7 @@ namespace MomoPetApp
         static void MomoLog(string scope, Exception error)
         {
             if(error==null)return;
-            try{string dir=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"MomoPet");Directory.CreateDirectory(dir);File.AppendAllText(Path.Combine(dir,"ui-errors.log"),DateTime.Now.ToString("o")+"\t["+scope+"]\t"+error+Environment.NewLine,Encoding.UTF8);}catch{}
+            try{string dir=MomoPaths.DataDir();Directory.CreateDirectory(dir);File.AppendAllText(Path.Combine(dir,"ui-errors.log"),DateTime.Now.ToString("o")+"\t["+scope+"]\t"+error+Environment.NewLine,Encoding.UTF8);}catch{}
         }
 
         [STAThread]
@@ -125,8 +168,19 @@ namespace MomoPetApp
                 MomoLog("task", e.Exception);
                 e.SetObserved();
             };
-            var controller = new PetController(app);
-            controller.Start();
+            PetController controller;
+            try
+            {
+                controller = new PetController(app);
+                controller.Start();
+            }
+            catch (Exception error)
+            {
+                MomoLog("startup", error);
+                MessageBox.Show("MomoPet 启动时遇到一个可诊断的问题。已保留错误记录，下一次更新会自动尝试修复。\n\n" + error.Message, "MomoPet", MessageBoxButton.OK, MessageBoxImage.Warning);
+                try { activationEvent.Dispose(); mutex.ReleaseMutex(); mutex.Dispose(); } catch { }
+                return;
+            }
             activationRegistration=ThreadPool.RegisterWaitForSingleObject(activationEvent,delegate(object state,bool timedOut){
                 try{app.Dispatcher.BeginInvoke(new Action(delegate{controller.ShowFromSecondLaunch();}));}catch{}
             },null,Timeout.Infinite,false);
@@ -142,7 +196,7 @@ namespace MomoPetApp
     {
         readonly Application app;
         readonly string root = AppDomain.CurrentDomain.BaseDirectory;
-        readonly string dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MomoPet");
+        readonly string dataDir = MomoPaths.DataDir();
         readonly string dataFile;
         readonly string stashFile;
         readonly string stashDir;
@@ -235,6 +289,7 @@ namespace MomoPetApp
         {
             Directory.CreateDirectory(dataDir);
             Directory.CreateDirectory(stashDir);
+            LoadMomoAccount();
             LoadPetMovementSettings();
             LoadTasks();
             LoadStash();
@@ -245,6 +300,7 @@ namespace MomoPetApp
             ApplySelectedSkin();
             InitializePetExperience();
             InitializeMessenger();
+            InitializeHealthCompanion();
             UpgradeStoredImages();
             RefreshTasks();
             RefreshStash();
@@ -426,11 +482,13 @@ namespace MomoPetApp
             var windAiSettings = new MenuItem { Header = "Wind AI 模型设置" }; windAiSettings.Click += delegate { ShowWindAiModelSettings(); };
             var marketSettings = new MenuItem { Header = "盯盘与 Wind Key 设置" }; marketSettings.Click += delegate { ToggleMarketPanel(); };
             var movementSettings = new MenuItem { Header = "活动范围与自动移动" }; movementSettings.Click += delegate { OpenMovementSettings(); };
-            var letters = new MenuItem { Header = "账号与来信" }; letters.Click += delegate { OpenMessengerPanel(); };
+            var letters = new MenuItem { Header = "Momo 邮局" }; letters.Click += delegate { OpenMessengerPanel(); };
+            var account = new MenuItem { Header = "桌宠账号" };account.Click += delegate { OpenMomoAccountPanel(); };
+            var community = new MenuItem { Header = "AI 社区" };community.Click += delegate { OpenCommunityPanel(); };
             var topmost = new MenuItem { Header = "保持最前", IsCheckable = true, IsChecked = true };
             topmost.Click += delegate { pet.Topmost = topmost.IsChecked;if(panel!=null)panel.Topmost=topmost.IsChecked;if (stashPanel != null) stashPanel.Topmost = topmost.IsChecked;if(marketPanel!=null)marketPanel.Topmost=topmost.IsChecked;if(launcherPanel!=null)launcherPanel.Topmost=topmost.IsChecked;if(movementSettingsPanel!=null)movementSettingsPanel.Topmost=topmost.IsChecked;if(skinWardrobePanel!=null)skinWardrobePanel.Topmost=topmost.IsChecked; SetAiTopmost(topmost.IsChecked);SetCommunityTopmost(topmost.IsChecked);SetMessengerTopmost(topmost.IsChecked); };
             var exit = new MenuItem { Header = "退出博道咪" }; exit.Click += delegate { Exit(); };
-            menu.Items.Add(letters);menu.Items.Add(imageAiSettings);menu.Items.Add(windAiSettings);menu.Items.Add(marketSettings);menu.Items.Add(movementSettings);menu.Items.Add(new Separator());AddPetExperienceMenu(menu);AddSkinMenu(menu);menu.Items.Add(new Separator());menu.Items.Add(topmost);menu.Items.Add(new Separator());menu.Items.Add(exit);
+            menu.Items.Add(community);menu.Items.Add(letters);menu.Items.Add(account);menu.Items.Add(imageAiSettings);menu.Items.Add(windAiSettings);menu.Items.Add(marketSettings);menu.Items.Add(movementSettings);menu.Items.Add(new Separator());AddPetExperienceMenu(menu);AddSkinMenu(menu);menu.Items.Add(new Separator());menu.Items.Add(topmost);menu.Items.Add(new Separator());menu.Items.Add(exit);
             StylePetContextMenu(menu);
             pet.ContextMenu = menu;
             pet.Closed += delegate { if (!exiting) Exit(); };
@@ -681,7 +739,7 @@ namespace MomoPetApp
         void RefreshTasks(){if(taskList!=null){string filter=taskFilterBox==null?"全部":Convert.ToString(taskFilterBox.SelectedItem)??"全部";taskList.Items.Clear();foreach(var t in tasks.Where(x=>filter=="全部"||(String.IsNullOrEmpty(x.Category)?"未分类":x.Category)==filter)){var row=new ListBoxItem{Content=TaskRowContent(t),Tag=t,Padding=new Thickness(4),ToolTip=t.Title,HorizontalContentAlignment=HorizontalAlignment.Stretch};taskList.Items.Add(row);}}int active=tasks.Count(t=>!t.Done);if(badge!=null){badgeText.Text=active.ToString();badge.Visibility=!edgeHidden&&active>0?Visibility.Visible:Visibility.Collapsed;}}
 
         void LoadTasks() { try { if (File.Exists(dataFile)) tasks.AddRange(json.Deserialize<List<TaskItem>>(File.ReadAllText(dataFile)) ?? new List<TaskItem>()); } catch { try { File.Copy(dataFile, dataFile + ".bak", true); } catch { } } }
-        void SaveTasks() { File.WriteAllText(dataFile, json.Serialize(tasks), System.Text.Encoding.UTF8); }
+        void SaveTasks() { try { MomoStorage.WriteTextAtomic(dataFile,json.Serialize(tasks),System.Text.Encoding.UTF8); } catch { } }
         void PositionPanel() { if(panel==null||shelvedWindows.ContainsKey(panel)||manuallyPlacedWindows.Contains(panel)||panel.WindowState!=WindowState.Normal)return; var work = SystemParameters.WorkArea; double left = pet.Left-panel.Width-12; if (left < work.Left) left = pet.Left+pet.Width+12; if (left+panel.Width > work.Right) left = work.Right-panel.Width-8; panel.Left = Math.Max(work.Left+8,left); panel.Top = Math.Max(work.Top+8,Math.Min(pet.Top,work.Bottom-panel.Height-8)); }
         void TogglePanel() { if(panel==null)BuildPanel();if(RestoreShelvedIfNeeded(panel)){titleBox.Focus();return;}if (panel.IsVisible) panel.Hide(); else { PositionPanel(); panel.Show(); panel.Activate(); titleBox.Focus(); } }
 
@@ -942,7 +1000,7 @@ namespace MomoPetApp
             if (changed) SaveStash();
         }
 
-        void SaveStash() { string temp=stashFile+".tmp";File.WriteAllText(temp,json.Serialize(stashItems),new UTF8Encoding(false));File.Copy(temp,stashFile,true);File.Delete(temp); }
+        void SaveStash() { try { MomoStorage.WriteTextAtomic(stashFile,json.Serialize(stashItems),new UTF8Encoding(false)); } catch { } }
 
         DataObject MakeStashData(StashItem item)
         {
@@ -1118,7 +1176,7 @@ namespace MomoPetApp
 
         void SaveMarketAlerts()
         {
-            try { File.WriteAllText(marketStateFile,json.Serialize(marketAlerts),Encoding.UTF8); } catch { }
+            try { MomoStorage.WriteTextAtomic(marketStateFile,json.Serialize(marketAlerts),Encoding.UTF8); } catch { }
         }
 
         void CheckMarketSchedule()
@@ -1789,6 +1847,6 @@ namespace MomoPetApp
             return value*value*(3-2*value);
         }
 
-        void Exit() { if (exiting) return; exiting = true; if(comfortSaveTimer!=null)comfortSaveTimer.Stop();foreach(Window savedWindow in comfortLoaded.ToList())SaveOfficeState(savedWindow); timer.Stop(); if (speechTimer != null) speechTimer.Stop(); if (idleTimer != null) idleTimer.Stop(); if (marketTimer != null) marketTimer.Stop();if(launcherClickTimer!=null)launcherClickTimer.Stop();CancelShelfPeekTimers();ShutdownPetExperience(); if(renderAttached) { CompositionTarget.Rendering -= OnRendering; renderAttached=false; } CloseAiWindows();CloseCommunityWindows();CloseMessengerWindows();if(skinWardrobePanel!=null)skinWardrobePanel.Close();if(shelfPeekPanel!=null)shelfPeekPanel.Close();if(launcherPanel!=null)launcherPanel.Close(); if (marketPanel != null) marketPanel.Close(); if (stashPanel != null) stashPanel.Close(); if (panel != null) panel.Close(); if (pet != null) pet.Close(); app.Shutdown(); }
+        void Exit() { if (exiting) return; exiting = true; if(comfortSaveTimer!=null)comfortSaveTimer.Stop();foreach(Window savedWindow in comfortLoaded.ToList())SaveOfficeState(savedWindow); timer.Stop(); if (speechTimer != null) speechTimer.Stop(); if (idleTimer != null) idleTimer.Stop(); if (marketTimer != null) marketTimer.Stop();if(launcherClickTimer!=null)launcherClickTimer.Stop();CancelShelfPeekTimers();ShutdownPetExperience();ShutdownHealthCompanion(); if(renderAttached) { CompositionTarget.Rendering -= OnRendering; renderAttached=false; } CloseAiWindows();CloseCommunityWindows();CloseMessengerWindows();if(skinWardrobePanel!=null)skinWardrobePanel.Close();if(shelfPeekPanel!=null)shelfPeekPanel.Close();if(launcherPanel!=null)launcherPanel.Close(); if (marketPanel != null) marketPanel.Close(); if (stashPanel != null) stashPanel.Close(); if (panel != null) panel.Close(); if (pet != null) pet.Close(); app.Shutdown(); }
     }
 }

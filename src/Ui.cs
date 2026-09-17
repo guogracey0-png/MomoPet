@@ -498,6 +498,7 @@ namespace MomoPetApp
         public static void StyleWindow(Window window)
         {
             if (window == null) return;
+            TextSelection.Install();
             EnsureTemplates();
             window.FontFamily = UiFont;
             window.Foreground = Ink;
@@ -624,6 +625,20 @@ namespace MomoPetApp
             scale.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
         }
 
+        public static TextBox ReadOnlyText(string value,double size)
+        {
+            var text=new TextBox{Text=value??"",IsReadOnly=true,IsReadOnlyCaretVisible=true,
+                AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,FontSize=size,FontFamily=UiFont,
+                Foreground=Ink,Background=Brushes.Transparent,BorderThickness=new Thickness(0),
+                Padding=new Thickness(0),HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
+            var menu=new ContextMenu();
+            menu.Items.Add(new MenuItem{Header="复制选中文字",Command=ApplicationCommands.Copy,CommandTarget=text});
+            menu.Items.Add(new MenuItem{Header="全选",Command=ApplicationCommands.SelectAll,CommandTarget=text});
+            var all=new MenuItem{Header="复制全部文字"};all.Click+=delegate{TextSelection.Copy(text.Text);};menu.Items.Add(all);text.ContextMenu=menu;
+            return text;
+        }
+
         /// <summary>统一标题文字。</summary>
         public static TextBlock Title(string text, double size)
         {
@@ -674,7 +689,7 @@ namespace MomoPetApp
                 MinHeight = 190,
                 SizeToContent = SizeToContent.Manual,
                 WindowStyle = WindowStyle.None,
-                ResizeMode = ResizeMode.NoResize,
+                ResizeMode = ResizeMode.CanResize,
                 AllowsTransparency = true,
                 Background = Brushes.Transparent,
                 ShowInTaskbar = false,
@@ -686,7 +701,7 @@ namespace MomoPetApp
             var card = CardBorder();card.CornerRadius = new CornerRadius(18);card.Padding = new Thickness(22);card.Margin = new Thickness(8);
             var root = new Grid();root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var header = new Grid { Cursor = Cursors.SizeAll };header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });header.Children.Add(Title(title ?? "提示", 18));var close = MakeCloseButton();close.Click += delegate { dialog.Close(); };Grid.SetColumn(close, 1);header.Children.Add(close);header.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e) { if (e.ChangedButton == MouseButton.Left) try { dialog.DragMove(); } catch { } };root.Children.Add(header);
-            var body = new TextBlock { Text = message ?? "", TextWrapping = TextWrapping.Wrap, FontSize = 14, LineHeight = 23, Foreground = Ink, Margin = new Thickness(2, 16, 2, 14), VerticalAlignment = VerticalAlignment.Top };Grid.SetRow(body, 1);root.Children.Add(body);
+            var body = ReadOnlyText(message,14);body.Margin=new Thickness(2,16,2,14);dialog.Height=Math.Min(SystemParameters.WorkArea.Height-40,(message??"").Length>240?540:280);Grid.SetRow(body, 1);root.Children.Add(body);
             var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };if (cancellable) { var cancel = MakeButton("取消", Neutral);cancel.Click += delegate { dialog.Close(); };actions.Children.Add(cancel); }var ok = MakeButton(confirmText, Accent);ok.Foreground = Brushes.White;ok.Click += delegate { accepted = true;dialog.Close(); };actions.Children.Add(ok);Grid.SetRow(actions, 2);root.Children.Add(actions);card.Child = root;dialog.Content = card;dialog.ShowDialog();return accepted;
         }
     }

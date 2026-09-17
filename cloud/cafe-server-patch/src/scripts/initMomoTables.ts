@@ -10,6 +10,8 @@ const tables = [
   { tableName: MOMO_TABLES.groups, primaryKey: [{ name: "id", type: PK.STRING }] },
   { tableName: MOMO_TABLES.groupMembers, primaryKey: [{ name: "memberId", type: PK.STRING }, { name: "groupId", type: PK.STRING }] },
   { tableName: MOMO_TABLES.groupMessages, primaryKey: [{ name: "groupId", type: PK.STRING }, { name: "createdAt", type: PK.STRING }, { name: "id", type: PK.STRING }] },
+  { tableName: MOMO_TABLES.communityPosts, primaryKey: [{ name: "createdAt", type: PK.STRING }, { name: "id", type: PK.STRING }] },
+  { tableName: MOMO_TABLES.communityPackages, primaryKey: [{ name: "kind", type: PK.STRING }, { name: "createdAt", type: PK.STRING }, { name: "id", type: PK.STRING }] },
 ];
 
 function exists(tableName: string): Promise<boolean> { return new Promise(resolve => client.describeTable({ tableName }, (error: Error | null) => resolve(!error))); }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
@@ -17,16 +18,6 @@ using System.Windows.Threading;
 
 namespace MomoPetApp
 {
-    public class MomoAccountState
-    {
-        public string ServerBase { get; set; }
-        public string MemberId { get; set; }
-        public string Username { get; set; }
-        public string Nickname { get; set; }
-        public string Avatar { get; set; }
-        public string SkinId { get; set; }
-    }
-
     public class MomoRemoteMember
     {
         public string Id { get; set; }
@@ -44,6 +35,12 @@ namespace MomoPetApp
         public string Url { get; set; }
         public string Type { get; set; }
         public long Size { get; set; }
+    }
+
+    class MomoPreparedUpload
+    {
+        public List<string> Paths=new List<string>();
+        public List<string> TemporaryFiles=new List<string>();
     }
 
     public class MomoLetter
@@ -87,7 +84,6 @@ namespace MomoPetApp
 
     public partial class PetController
     {
-        const string DefaultMomoCloud="https://cafe-api-zofigfdfto.cn-hangzhou.fcapp.run";
         Window messengerPanel,courierWindow;
         Grid messengerBody;
         ListBox messengerContacts,messengerGroups;
@@ -95,9 +91,7 @@ namespace MomoPetApp
         TextBox messengerInput;
         WrapPanel messengerAttachmentPanel;
         Button messengerSendButton;
-        TextBlock messengerTitle,messengerStatus,accountStatus;
-        TextBox accountUsernameBox;
-        PasswordBox accountPasswordBox;
+        TextBlock messengerTitle,messengerStatus;
         readonly List<MomoRemoteMember> messengerMembers=new List<MomoRemoteMember>();
         readonly List<MomoLetter> messengerLetters=new List<MomoLetter>();
         readonly List<MomoGroup> momoGroups=new List<MomoGroup>();
@@ -105,8 +99,6 @@ namespace MomoPetApp
         readonly List<MomoAttachment> pendingAttachments=new List<MomoAttachment>();
         readonly Queue<MomoLetter> courierQueue=new Queue<MomoLetter>();
         readonly HashSet<string> knownLetterIds=new HashSet<string>();
-        MomoAccountState momoAccount;
-        string momoToken;
         MomoRemoteMember selectedMessengerMember;
         MomoGroup selectedMomoGroup;
         DispatcherTimer messengerPollTimer,courierTimer;
@@ -119,6 +111,8 @@ namespace MomoPetApp
         double courierStartLeft,courierTargetLeft,courierExitLeft,courierBaseTop;
         int courierDirection=1,courierFrameTick;
         bool messengerRequestBusy;
+        int messengerViewRequestId;
+        bool messengerSendBusy;
         Button courierReceiveButton;
         Window receiptWindow;
         Grid receiptRoot;
@@ -132,30 +126,10 @@ namespace MomoPetApp
         readonly Dictionary<string,string> knownLetterStatus=new Dictionary<string,string>();
         readonly List<MomoLetter> awaitingReceipts=new List<MomoLetter>();
 
-        string AccountStatePath(){return Path.Combine(dataDir,"momo-account.json");}
-        string AccountTokenPath(){return Path.Combine(dataDir,"momo-account-token.dat");}
-        byte[] AccountEntropy(){return Encoding.UTF8.GetBytes("MomoPet.Account.Token.v1");}
-
         void InitializeMessenger()
         {
-            LoadMomoAccount();messengerPollTimer=new DispatcherTimer{Interval=TimeSpan.FromSeconds(5)};messengerPollTimer.Tick+=delegate{PollMomoMessages();};if(IsMomoSignedIn()){messengerPollTimer.Start();PollMomoMessages();}
+            messengerPollTimer=new DispatcherTimer{Interval=TimeSpan.FromSeconds(5)};messengerPollTimer.Tick+=delegate{PollMomoMessages();};if(IsMomoSignedIn()){messengerPollTimer.Start();PollMomoMessages();}
         }
-
-        void LoadMomoAccount()
-        {
-            try{if(File.Exists(AccountStatePath()))momoAccount=json.Deserialize<MomoAccountState>(File.ReadAllText(AccountStatePath(),Encoding.UTF8));}catch{}
-            if(momoAccount==null)momoAccount=new MomoAccountState{ServerBase=DefaultMomoCloud,SkinId="default"};
-            if(String.IsNullOrWhiteSpace(momoAccount.ServerBase))momoAccount.ServerBase=DefaultMomoCloud;
-            try{if(File.Exists(AccountTokenPath()))momoToken=Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(AccountTokenPath()),AccountEntropy(),DataProtectionScope.CurrentUser));}catch{momoToken=null;}
-        }
-
-        void SaveMomoAccount()
-        {
-            try{Directory.CreateDirectory(dataDir);File.WriteAllText(AccountStatePath(),json.Serialize(momoAccount),new UTF8Encoding(false));if(!String.IsNullOrWhiteSpace(momoToken)){byte[] raw=Encoding.UTF8.GetBytes(momoToken);try{File.WriteAllBytes(AccountTokenPath(),ProtectedData.Protect(raw,AccountEntropy(),DataProtectionScope.CurrentUser));}finally{Array.Clear(raw,0,raw.Length);}}}catch{}
-        }
-
-        bool IsMomoSignedIn(){return momoAccount!=null&&!String.IsNullOrWhiteSpace(momoAccount.MemberId)&&!String.IsNullOrWhiteSpace(momoToken);}
-        string MomoServer(){return (momoAccount==null||String.IsNullOrWhiteSpace(momoAccount.ServerBase)?DefaultMomoCloud:momoAccount.ServerBase).Trim().TrimEnd('/');}
 
         // 后台线程回调 UI 前先确认调度器还活着：窗口关闭后再 BeginInvoke 会抛
         // InvalidOperationException；异常从线程池线程逃逸出去会直接终止进程，造成“用着用着就闪退”。
@@ -187,14 +161,14 @@ namespace MomoPetApp
                     byte[] newline=Encoding.UTF8.GetBytes("\r\n");
                     using(var output=request.GetRequestStream()){
                         foreach(string path in paths){
-                            string fileName=Path.GetFileName(path),mime=GuessAttachmentMime(Path.GetExtension(path));
-                            byte[] header=Encoding.UTF8.GetBytes("--"+boundary+"\r\nContent-Disposition: form-data; name=\"files\"; filename=\""+fileName+"\"\r\nContent-Type: "+mime+"\r\n\r\n");output.Write(header,0,header.Length);
+                            string fileName=Path.GetFileName(path),mime=GuessAttachmentMime(Path.GetExtension(path));string headerFileName=fileName.Replace('"','\'').Replace('\r','_').Replace('\n','_');
+                            byte[] header=Encoding.UTF8.GetBytes("--"+boundary+"\r\nContent-Disposition: form-data; name=\"files\"; filename=\""+headerFileName+"\"\r\nContent-Type: "+mime+"\r\n\r\n");output.Write(header,0,header.Length);
                             using(var fileStream=File.OpenRead(path)){byte[] buffer=new byte[81920];int read;while((read=fileStream.Read(buffer,0,buffer.Length))>0)output.Write(buffer,0,read);}
                             output.Write(newline,0,newline.Length);
                         }
                         byte[] tail=Encoding.UTF8.GetBytes("--"+boundary+"--\r\n");output.Write(tail,0,tail.Length);
                     }
-                    using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream(),Encoding.UTF8)){string text=reader.ReadToEnd();var parsed=new System.Web.Script.Serialization.JavaScriptSerializer().DeserializeObject(text) as Dictionary<string,object>;List<MomoAttachment> list=new List<MomoAttachment>();object raw=parsed!=null&&parsed.ContainsKey("files")?parsed["files"]:null;var items=raw is string?null:raw as System.Collections.IEnumerable;if(items!=null){foreach(object item in items){var map=item as Dictionary<string,object>;if(map==null)continue;list.Add(new MomoAttachment{Name=map.ContainsKey("name")?Convert.ToString(map["name"]):"文件",Url=map.ContainsKey("url")?Convert.ToString(map["url"]):"",Type=map.ContainsKey("type")?Convert.ToString(map["type"]):"",Size=map.ContainsKey("size")?Convert.ToInt64(map["size"]):0});}}UiPost(new Action(delegate{if(success!=null)success(list);}));}
+                    using(var response=(HttpWebResponse)request.GetResponse())using(var reader=new StreamReader(response.GetResponseStream(),Encoding.UTF8)){string text=reader.ReadToEnd();var parsed=new System.Web.Script.Serialization.JavaScriptSerializer().DeserializeObject(text) as Dictionary<string,object>;List<MomoAttachment> list=new List<MomoAttachment>();object raw=parsed!=null&&parsed.ContainsKey("files")?parsed["files"]:null;var items=raw is string?null:raw as System.Collections.IEnumerable;if(items!=null){int uploadedIndex=0;foreach(object item in items){var map=item as Dictionary<string,object>;if(map==null)continue;string originalName=uploadedIndex<paths.Length?Path.GetFileName(paths[uploadedIndex]):"文件";list.Add(new MomoAttachment{Name=originalName,Url=map.ContainsKey("url")?Convert.ToString(map["url"]):"",Type=map.ContainsKey("type")?Convert.ToString(map["type"]):"",Size=map.ContainsKey("size")?Convert.ToInt64(map["size"]):0});uploadedIndex++;}}UiPost(new Action(delegate{if(success!=null)success(list);}));}
                 }catch(WebException web){string message="文件上传失败";try{using(var response=web.Response)using(var reader=new StreamReader(response.GetResponseStream(),Encoding.UTF8)){string text=reader.ReadToEnd();var error=new System.Web.Script.Serialization.JavaScriptSerializer().DeserializeObject(text) as Dictionary<string,object>;if(error!=null&&error.ContainsKey("error"))message=Convert.ToString(error["error"]);}}catch{}UiPost(new Action(delegate{if(failure!=null)failure(message);}));}
                 catch(Exception error){UiPost(new Action(delegate{if(failure!=null)failure(error.Message);}));}
             });
@@ -245,7 +219,78 @@ namespace MomoPetApp
 
         void SetMessengerBusy(bool busy)
         {
+            momoFileOperationBusy=busy;
             if(messengerInput!=null)messengerInput.IsEnabled=!busy;if(messengerSendButton!=null)messengerSendButton.IsEnabled=!busy;
+            if(messengerContacts!=null)messengerContacts.IsEnabled=!busy;if(messengerGroups!=null)messengerGroups.IsEnabled=!busy;
+        }
+
+        bool momoFileOperationBusy;
+        Window momoFileInputWindow;
+
+        void InstallMomoFileInput()
+        {
+            if(messengerPanel==null||momoFileInputWindow==messengerPanel)return;
+            momoFileInputWindow=messengerPanel;messengerPanel.AllowDrop=true;
+            messengerPanel.PreviewDragOver+=delegate(object sender,DragEventArgs e){
+                if(!e.Data.GetDataPresent(DataFormats.FileDrop))return;
+                e.Effects=IsMomoSignedIn()&&!momoFileOperationBusy&&(selectedMessengerMember!=null||selectedMomoGroup!=null)?DragDropEffects.Copy:DragDropEffects.None;e.Handled=true;
+            };
+            messengerPanel.PreviewDrop+=delegate(object sender,DragEventArgs e){
+                if(!e.Data.GetDataPresent(DataFormats.FileDrop))return;
+                e.Handled=true;AddMomoFilesFromData(e.Data);
+            };
+            messengerPanel.PreviewKeyDown+=delegate(object sender,KeyEventArgs e){
+                if(e.Key!=Key.V||(Keyboard.Modifiers&ModifierKeys.Control)==0)return;
+                try{if(!Clipboard.ContainsFileDropList())return;e.Handled=true;AddMomoFiles(Clipboard.GetFileDropList().Cast<string>().ToArray());}
+                catch(Exception error){if(messengerStatus!=null)messengerStatus.Text="无法读取剪贴板文件："+error.Message;}
+            };
+            DataObject.AddPastingHandler(messengerPanel,delegate(object sender,DataObjectPastingEventArgs e){
+                if(!e.DataObject.GetDataPresent(DataFormats.FileDrop))return;
+                e.CancelCommand();AddMomoFilesFromData(e.DataObject);
+            });
+        }
+
+        void AddMomoFilesFromData(IDataObject data)
+        {
+            try{AddMomoFiles(data.GetData(DataFormats.FileDrop) as string[]);}
+            catch(Exception error){if(messengerStatus!=null)messengerStatus.Text="无法读取拖入的文件："+error.Message;}
+        }
+
+        void AddMomoFiles(string[] paths)
+        {
+            if(!IsMomoSignedIn())return;
+            if(momoFileOperationBusy){if(messengerStatus!=null)messengerStatus.Text="正在上传或发送，请稍后再添加文件";return;}
+            if(selectedMessengerMember==null&&selectedMomoGroup==null){if(messengerStatus!=null)messengerStatus.Text="先选择一位朋友或一个小组";return;}
+            var inputs=(paths??new string[0]).Where(x=>!String.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            if(inputs.Length==0)return;
+            if(inputs.Any(x=>!File.Exists(x)&&!Directory.Exists(x))){if(messengerStatus!=null)messengerStatus.Text="其中有文件或文件夹已经不存在，请重新选择";return;}
+            if(inputs.Length+pendingAttachments.Count>9){if(messengerStatus!=null)messengerStatus.Text="一封信最多带 9 个项目，还可添加 "+(9-pendingAttachments.Count)+" 个；请减少所选内容";return;}
+            SetMessengerBusy(true);if(messengerStatus!=null)messengerStatus.Text=inputs.Any(Directory.Exists)?"正在整理文件夹并准备上传…":"正在上传 "+inputs.Length+" 个文件…";
+            Task.Factory.StartNew(delegate{
+                try{
+                    var prepared=PrepareMomoUpload(inputs);
+                    UiPost(new Action(delegate{UploadMomoFiles(prepared.Paths.ToArray(),delegate(List<MomoAttachment> uploaded){CleanupMomoTemporaryFiles(prepared.TemporaryFiles);SetMessengerBusy(false);pendingAttachments.AddRange(uploaded);RefreshAttachmentChips();if(messengerStatus!=null)messengerStatus.Text=uploaded.Count>0?"已上传 "+uploaded.Count+" 个项目，点击“送出”发送":"文件没有上传成功";},delegate(string error){CleanupMomoTemporaryFiles(prepared.TemporaryFiles);SetMessengerBusy(false);if(messengerStatus!=null)messengerStatus.Text=error+"；可重新粘贴或拖入重试";});}));
+                }catch(Exception error){UiPost(new Action(delegate{SetMessengerBusy(false);if(messengerStatus!=null)messengerStatus.Text="文件夹整理失败："+error.Message;}));}
+            });
+        }
+
+        static MomoPreparedUpload PrepareMomoUpload(IEnumerable<string> inputs)
+        {
+            var prepared=new MomoPreparedUpload();
+            try{
+                foreach(string input in inputs){if(File.Exists(input)){prepared.Paths.Add(input);continue;}string folderName=new DirectoryInfo(input).Name;string tempFolder=Path.Combine(Path.GetTempPath(),"MomoPet-folder-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(tempFolder);string zipPath=Path.Combine(tempFolder,SafeAttachmentName(folderName)+".zip");prepared.TemporaryFiles.Add(zipPath);ZipFile.CreateFromDirectory(input,zipPath,CompressionLevel.Optimal,false,Encoding.UTF8);prepared.Paths.Add(zipPath);}
+                return prepared;
+            }catch{CleanupMomoTemporaryFiles(prepared.TemporaryFiles);throw;}
+        }
+
+        static string SafeAttachmentName(string name)
+        {
+            string value=Path.GetFileName(name??"").Trim();foreach(char invalid in Path.GetInvalidFileNameChars())value=value.Replace(invalid,'_');return String.IsNullOrWhiteSpace(value)?"附件":value;
+        }
+
+        static void CleanupMomoTemporaryFiles(IEnumerable<string> files)
+        {
+            foreach(string file in files??Enumerable.Empty<string>()){try{string folder=Path.GetDirectoryName(file);if(File.Exists(file))File.Delete(file);if(!String.IsNullOrWhiteSpace(folder)&&Directory.Exists(folder))Directory.Delete(folder,true);}catch{}}
         }
 
         void PickMomoFiles()
@@ -253,9 +298,13 @@ namespace MomoPetApp
             if(selectedMessengerMember==null&&selectedMomoGroup==null){if(messengerStatus!=null)messengerStatus.Text="先选择一位朋友或一个小组";return;}
             var dialog=new Microsoft.Win32.OpenFileDialog{Title="选择要放进信里的文件",Multiselect=true,Filter="常用文件|*.jpg;*.jpeg;*.png;*.gif;*.webp;*.bmp;*.svg;*.pdf;*.doc;*.docx;*.ppt;*.pptx;*.xls;*.xlsx;*.txt;*.md;*.csv;*.zip;*.rar;*.7z;*.json;*.yaml;*.yml;*.mp3;*.mp4|所有文件|*.*"};
             if(dialog.ShowDialog(messengerPanel)!=true||dialog.FileNames==null||dialog.FileNames.Length==0)return;
-            int room=9-pendingAttachments.Count;if(room<=0){if(messengerStatus!=null)messengerStatus.Text="一封信最多带 9 个文件";return;}
-            SetMessengerBusy(true);if(messengerStatus!=null)messengerStatus.Text="正在把文件装进信封…";
-            UploadMomoFiles(dialog.FileNames.Take(room).ToArray(),delegate(List<MomoAttachment> files){SetMessengerBusy(false);pendingAttachments.AddRange(files);RefreshAttachmentChips();if(messengerStatus!=null)messengerStatus.Text=files.Count>0?"已放入 "+files.Count+" 个文件":"文件没有上传成功";},delegate(string error){SetMessengerBusy(false);if(messengerStatus!=null)messengerStatus.Text=error;});
+            AddMomoFiles(dialog.FileNames);
+        }
+
+        void PickMomoFolder()
+        {
+            var dialog=new Microsoft.Win32.OpenFileDialog{Title="选择要发送的文件夹",CheckFileExists=false,ValidateNames=false,FileName="选择这个文件夹"};
+            if(dialog.ShowDialog(messengerPanel)!=true)return;string folder=Path.GetDirectoryName(dialog.FileName);if(Directory.Exists(folder))AddMomoFiles(new[]{folder});
         }
 
         void RefreshAttachmentChips()
@@ -272,8 +321,14 @@ namespace MomoPetApp
 
         void OpenAttachment(MomoAttachment file)
         {
-            if(file==null||String.IsNullOrWhiteSpace(file.Url))return;string target=file.Url.StartsWith("http",StringComparison.OrdinalIgnoreCase)?file.Url:MomoServer()+file.Url;
-            try{Process.Start(new ProcessStartInfo{FileName=target,UseShellExecute=true});}catch(Exception error){if(messengerStatus!=null)messengerStatus.Text="打开文件失败："+error.Message;}
+            if(file==null||String.IsNullOrWhiteSpace(file.Url))return;string target=file.Url.StartsWith("http",StringComparison.OrdinalIgnoreCase)?file.Url:MomoServer()+file.Url;string originalName=SafeAttachmentName(file.Name);
+            var dialog=new Microsoft.Win32.SaveFileDialog{Title="把附件保存到电脑",FileName=originalName,OverwritePrompt=true,AddExtension=true};string ext=Path.GetExtension(originalName);if(!String.IsNullOrWhiteSpace(ext)){dialog.DefaultExt=ext;dialog.Filter=ext.TrimStart('.').ToUpperInvariant()+" 文件|*"+ext+"|所有文件|*.*";}else dialog.Filter="所有文件|*.*";
+            if(dialog.ShowDialog(messengerPanel)!=true)return;string destination=dialog.FileName,token=momoToken;if(messengerStatus!=null)messengerStatus.Text="正在下载 "+originalName+"…";
+            Task.Factory.StartNew(delegate{
+                string partial=destination+".momopet-download";
+                try{var request=(HttpWebRequest)WebRequest.Create(target);request.Method="GET";request.Timeout=600000;request.ReadWriteTimeout=600000;if(!String.IsNullOrWhiteSpace(token))request.Headers[HttpRequestHeader.Authorization]="Bearer "+token;using(var response=(HttpWebResponse)request.GetResponse())using(var input=response.GetResponseStream())using(var output=File.Create(partial))input.CopyTo(output);File.Copy(partial,destination,true);File.Delete(partial);UiPost(new Action(delegate{if(messengerStatus!=null)messengerStatus.Text="已保存："+destination;}));}
+                catch(Exception error){try{if(File.Exists(partial))File.Delete(partial);}catch{}UiPost(new Action(delegate{if(messengerStatus!=null)messengerStatus.Text="下载失败："+error.Message;}));}
+            });
         }
 
         void AddAttachmentChips(Panel host,List<MomoAttachment> files,bool alignRight)
@@ -298,34 +353,16 @@ namespace MomoPetApp
 
         void RefreshMessengerBody()
         {
+            InstallMomoFileInput();if(momoFileOperationBusy)return;
             if(messengerBody==null)return;messengerBody.Children.Clear();messengerBody.ColumnDefinitions.Clear();messengerBody.RowDefinitions.Clear();if(!IsMomoSignedIn()){BuildAccountGate();return;}BuildConversationWorkspace();
         }
 
         void BuildAccountGate()
         {
-            messengerBody.ColumnDefinitions.Add(new ColumnDefinition());messengerBody.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(430)});messengerBody.ColumnDefinitions.Add(new ColumnDefinition());
-            var card=HubCard(new Grid(),new Thickness(0,48,0,48),new Thickness(34));card.Background=Ui.Card;Grid.SetColumn(card,1);messengerBody.Children.Add(card);var form=(Grid)card.Child;for(int i=0;i<6;i++)form.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            var mark=new Border{Width=64,Height=64,CornerRadius=new CornerRadius(22),Background=Ui.PeachSoft,HorizontalAlignment=HorizontalAlignment.Center,Child=HubText("💌",28,Ui.AccentDeep,FontWeights.Normal)};((TextBlock)mark.Child).HorizontalAlignment=HorizontalAlignment.Center;((TextBlock)mark.Child).VerticalAlignment=VerticalAlignment.Center;form.Children.Add(mark);
-            var heading=new StackPanel{Margin=new Thickness(0,16,0,22)};heading.Children.Add(Ui.Title("登录 Momo 信箱",22));heading.HorizontalAlignment=HorizontalAlignment.Center;heading.Children.Add(HubText("使用博知汇账号，只需要账号和密码",12.5,Ui.SubInk,FontWeights.Normal));Grid.SetRow(heading,1);form.Children.Add(heading);
-            accountUsernameBox=new TextBox{Height=44,ToolTip="账号",Margin=new Thickness(0,0,0,10),VerticalContentAlignment=VerticalAlignment.Center};Grid.SetRow(accountUsernameBox,2);form.Children.Add(accountUsernameBox);
-            accountPasswordBox=new PasswordBox{Height=44,ToolTip="密码",Margin=new Thickness(0,0,0,14),VerticalContentAlignment=VerticalAlignment.Center};accountPasswordBox.KeyDown+=delegate(object sender,KeyEventArgs e){if(e.Key==Key.Enter){SubmitMomoAccount();e.Handled=true;}};Grid.SetRow(accountPasswordBox,3);form.Children.Add(accountPasswordBox);
-            var actions=new Grid();actions.ColumnDefinitions.Add(new ColumnDefinition());actions.ColumnDefinitions.Add(new ColumnDefinition());var register=MakeButton("注册新账号",Ui.Neutral);register.Height=42;register.Margin=new Thickness(0,0,6,0);register.Click+=delegate{ShowMomoRegisterDialog();};actions.Children.Add(register);var login=MakeButton("登录",Ui.Accent);login.Foreground=Brushes.White;login.Height=42;login.Margin=new Thickness(6,0,0,0);login.Click+=delegate{SubmitMomoAccount();};Grid.SetColumn(login,1);actions.Children.Add(login);Grid.SetRow(actions,4);form.Children.Add(actions);
-            accountStatus=HubText("服务地址已经内置，不需要额外配置。",11.5,Ui.SubInk,FontWeights.Normal);accountStatus.TextAlignment=TextAlignment.Center;accountStatus.Margin=new Thickness(0,12,0,0);Grid.SetRow(accountStatus,5);form.Children.Add(accountStatus);
-        }
-
-        void SubmitMomoAccount()
-        {
-            string username=(accountUsernameBox.Text??"").Trim(),password=accountPasswordBox.Password??"";if(String.IsNullOrWhiteSpace(username)||String.IsNullOrWhiteSpace(password)){accountStatus.Text="请填写账号和密码";return;}accountStatus.Text="正在登录…";var body=new Dictionary<string,object>{{"username",username},{"password",password},{"skinId",petMovement==null?"default":petMovement.SkinId}};MomoApi<Dictionary<string,object>>("POST","/api/momo/auth/login",body,false,delegate(Dictionary<string,object> response){CompleteMomoAuth(response,accountPasswordBox,null);},delegate(string error){accountStatus.Text=error;});
-        }
-
-        void CompleteMomoAuth(Dictionary<string,object> response,PasswordBox password,Window dialog)
-        {
-            Dictionary<string,object> member=response!=null&&response.ContainsKey("member")?response["member"] as Dictionary<string,object>:null;if(response==null||member==null){if(accountStatus!=null)accountStatus.Text="服务返回的数据不完整";return;}momoToken=Convert.ToString(response["token"]);momoAccount.MemberId=Convert.ToString(member["id"]);momoAccount.Username=Convert.ToString(member["username"]);momoAccount.Nickname=Convert.ToString(member["nickname"]);momoAccount.Avatar=member.ContainsKey("avatar")?Convert.ToString(member["avatar"]):"🐾";momoAccount.SkinId=petMovement==null?"default":petMovement.SkinId;SaveMomoAccount();if(password!=null)password.Clear();if(dialog!=null)dialog.Close();messengerPollTimer.Start();RefreshMessengerBody();LoadMessengerMembers();LoadMomoGroups();PollMomoMessages();React("账号连好啦，等小猫来送信～",true);
-        }
-
-        void ShowMomoRegisterDialog()
-        {
-            var dialog=new Window{Title="注册 Momo 账号",Width=430,Height=440,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,ShowInTaskbar=false,AllowsTransparency=true,Background=Brushes.Transparent,Owner=messengerPanel,Topmost=messengerPanel.Topmost};Ui.StyleWindow(dialog);var shell=new Border{CornerRadius=new CornerRadius(20),Padding=new Thickness(26)};Ui.StyleCard(shell);var root=new StackPanel();var header=new Grid{Cursor=Cursors.SizeAll};header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});header.Children.Add(Ui.Title("创建账号",21));var close=Ui.MakeCloseButton();close.Click+=delegate{dialog.Close();};Grid.SetColumn(close,1);header.Children.Add(close);header.MouseLeftButtonDown+=delegate{try{dialog.DragMove();}catch{}};root.Children.Add(header);root.Children.Add(HubText("注册时填写一次昵称，之后登录仍然只用账号和密码。",12,Ui.SubInk,FontWeights.Normal));var username=new TextBox{Height=42,ToolTip="账号（3-20 位字母、数字或下划线）",Margin=new Thickness(0,18,0,9)};var nickname=new TextBox{Height=42,ToolTip="昵称（朋友看到的名字）",Margin=new Thickness(0,0,0,9)};var password=new PasswordBox{Height=42,ToolTip="密码（至少 6 位）",Margin=new Thickness(0,0,0,12)};root.Children.Add(username);root.Children.Add(nickname);root.Children.Add(password);var status=HubText("",11.5,Ui.Up,FontWeights.Normal);status.MinHeight=28;root.Children.Add(status);var submit=MakeButton("创建并登录",Ui.Accent);submit.Foreground=Brushes.White;submit.Height=42;submit.HorizontalAlignment=HorizontalAlignment.Stretch;submit.Click+=delegate{string u=(username.Text??"").Trim(),n=(nickname.Text??"").Trim(),p=password.Password??"";if(String.IsNullOrWhiteSpace(u)||String.IsNullOrWhiteSpace(n)||String.IsNullOrWhiteSpace(p)){status.Text="请填写账号、昵称和密码";return;}status.Text="正在创建…";var body=new Dictionary<string,object>{{"username",u},{"nickname",n},{"password",p},{"skinId",petMovement==null?"default":petMovement.SkinId}};MomoApi<Dictionary<string,object>>("POST","/api/momo/auth/register",body,false,delegate(Dictionary<string,object> response){CompleteMomoAuth(response,password,dialog);},delegate(string error){status.Text=error;});};root.Children.Add(submit);shell.Child=root;dialog.Content=shell;dialog.ShowDialog();
+            var content=new StackPanel{MaxWidth=440,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Center,Margin=new Thickness(32)};
+            content.Children.Add(CommunityCat(110));content.Children.Add(Ui.Title("欢迎来到 Momo 邮局",23));
+            var intro=HubText("私信、小组、文件与小猫送信，都在这里。\n登录桌宠账号后即可开始。",13,Ui.SubInk,FontWeights.Normal);intro.Margin=new Thickness(0,16,0,20);content.Children.Add(intro);
+            var login=MakeButton("登录桌宠账号",Ui.Accent);login.Foreground=Brushes.White;login.Click+=delegate{OpenMomoAccountPanel();};content.Children.Add(login);messengerBody.Children.Add(content);
         }
 
         void BuildConversationWorkspace()
@@ -334,18 +371,13 @@ namespace MomoPetApp
             var leftCard=HubCard(new Grid(),new Thickness(0,10,12,0),new Thickness(14));var left=(Grid)leftCard.Child;left.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});left.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});left.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});left.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
             var peopleTitle=new Grid{Margin=new Thickness(2,0,2,8)};peopleTitle.ColumnDefinitions.Add(new ColumnDefinition());peopleTitle.Children.Add(Ui.Title("朋友",16));left.Children.Add(peopleTitle);messengerContacts=new ListBox{ItemsSource=messengerMembers,BorderThickness=new Thickness(0),Background=Brushes.Transparent};messengerContacts.SelectionChanged+=delegate{var picked=messengerContacts.SelectedItem as MomoRemoteMember;if(picked==null)return;selectedMessengerMember=picked;selectedMomoGroup=null;if(messengerGroups!=null)messengerGroups.SelectedItem=null;LoadConversation(picked);};Grid.SetRow(messengerContacts,1);left.Children.Add(messengerContacts);
             var groupTitle=new Grid{Margin=new Thickness(2,10,2,8)};groupTitle.ColumnDefinitions.Add(new ColumnDefinition());groupTitle.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});groupTitle.Children.Add(Ui.Title("小组",16));var createGroup=MakeButton("＋ 拉个小组",Ui.PeachSoft);createGroup.Padding=new Thickness(10,5,10,5);createGroup.Click+=delegate{ShowCreateMomoGroupDialog();};Grid.SetColumn(createGroup,1);groupTitle.Children.Add(createGroup);Grid.SetRow(groupTitle,2);left.Children.Add(groupTitle);messengerGroups=new ListBox{ItemsSource=momoGroups,BorderThickness=new Thickness(0),Background=Brushes.Transparent};messengerGroups.SelectionChanged+=delegate{var picked=messengerGroups.SelectedItem as MomoGroup;if(picked==null)return;selectedMomoGroup=picked;selectedMessengerMember=null;if(messengerContacts!=null)messengerContacts.SelectedItem=null;LoadMomoGroupConversation(picked);};Grid.SetRow(messengerGroups,3);left.Children.Add(messengerGroups);messengerBody.Children.Add(leftCard);
-            var centerCard=HubCard(new Grid(),new Thickness(0,10,12,0),new Thickness(16));var center=(Grid)centerCard.Child;center.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});center.RowDefinitions.Add(new RowDefinition());center.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messengerTitle=Ui.Title(selectedMomoGroup!=null?selectedMomoGroup.Name:(selectedMessengerMember==null?"Momo 信箱":"和 "+selectedMessengerMember.Nickname+" 的来信"),17);messengerTitle.Margin=new Thickness(2,0,0,12);center.Children.Add(messengerTitle);messengerConversation=new StackPanel{Margin=new Thickness(12)};var scroll=new ScrollViewer{Content=messengerConversation,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,Background=Ui.Inner};Grid.SetRow(scroll,1);center.Children.Add(scroll);var composer=new Grid{Margin=new Thickness(0,12,0,0)};composer.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});composer.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messengerAttachmentPanel=new WrapPanel{Margin=new Thickness(0,0,0,6)};composer.Children.Add(messengerAttachmentPanel);var composerRow=new Grid();composerRow.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});composerRow.ColumnDefinitions.Add(new ColumnDefinition());composerRow.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});var attach=MakeButton("📎",Ui.Neutral);attach.Width=44;attach.Height=44;attach.Margin=new Thickness(0,0,8,0);attach.ToolTip="添加文件";attach.Click+=delegate{PickMomoFiles();};composerRow.Children.Add(attach);messengerInput=new TextBox{Height=44,AcceptsReturn=false,ToolTip="写一封信；回车发送",VerticalContentAlignment=VerticalAlignment.Center};messengerInput.KeyDown+=delegate(object sender,KeyEventArgs e){if(e.Key==Key.Enter){SendMomoMessage();e.Handled=true;}};Grid.SetColumn(messengerInput,1);composerRow.Children.Add(messengerInput);messengerSendButton=MakeButton("送出",Ui.Accent);messengerSendButton.Foreground=Brushes.White;messengerSendButton.Height=44;messengerSendButton.Margin=new Thickness(8,0,0,0);messengerSendButton.Click+=delegate{SendMomoMessage();};Grid.SetColumn(messengerSendButton,2);composerRow.Children.Add(messengerSendButton);Grid.SetRow(composerRow,1);composer.Children.Add(composerRow);Grid.SetRow(composer,2);center.Children.Add(composer);Grid.SetColumn(centerCard,1);messengerBody.Children.Add(centerCard);
-            var right=new StackPanel{Margin=new Thickness(0,10,0,0)};var me=new StackPanel();me.Children.Add(HubText((String.IsNullOrWhiteSpace(momoAccount.Avatar)?"🐾":momoAccount.Avatar)+"  "+momoAccount.Nickname,15,Ui.Ink,FontWeights.SemiBold));me.Children.Add(HubText("@"+momoAccount.Username,11.5,Ui.SubInk,FontWeights.Normal));right.Children.Add(HubCard(me,new Thickness(0,0,0,10),new Thickness(15)));var tip=new StackPanel();tip.Children.Add(HubText("小猫邮局",13,Ui.Ink,FontWeights.SemiBold));tip.Children.Add(HubText("私信会由对方的小猫送到桌面；小组消息安静留在信箱里。",11.5,Ui.SubInk,FontWeights.Normal));var preview=MakeButton("预览送信",Ui.Neutral);preview.Margin=new Thickness(0,10,0,0);preview.Click+=delegate{PreviewCourierSkin(selectedMessengerMember==null?(petMovement==null?"default":petMovement.SkinId):selectedMessengerMember.SkinId);};tip.Children.Add(preview);right.Children.Add(HubCard(tip,new Thickness(0,0,0,10),new Thickness(15)));messengerStatus=HubText("云端已连接",11.5,Ui.SubInk,FontWeights.Normal);right.Children.Add(messengerStatus);var logout=MakeButton("退出账号",Brushes.Transparent);logout.Foreground=Ui.Up;logout.Margin=new Thickness(0,12,0,0);logout.Click+=delegate{LogoutMomoAccount();};right.Children.Add(logout);Grid.SetColumn(right,2);messengerBody.Children.Add(right);RefreshConversationView();RefreshAttachmentChips();LoadMomoGroups();
-        }
-
-        void LogoutMomoAccount()
-        {
-            if(IsMomoSignedIn())MomoApi<Dictionary<string,object>>("POST","/api/momo/auth/logout",null,true,delegate(Dictionary<string,object> ignored){},delegate(string ignored){});momoAccount.MemberId=null;momoAccount.Username=null;momoAccount.Nickname=null;momoAccount.Avatar=null;momoToken=null;try{if(File.Exists(AccountTokenPath()))File.Delete(AccountTokenPath());}catch{}SaveMomoAccount();messengerPollTimer.Stop();selectedMessengerMember=null;selectedMomoGroup=null;messengerMembers.Clear();messengerLetters.Clear();momoGroups.Clear();momoGroupMessages.Clear();RefreshMessengerBody();
+            var centerCard=HubCard(new Grid(),new Thickness(0,10,12,0),new Thickness(16));var center=(Grid)centerCard.Child;center.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});center.RowDefinitions.Add(new RowDefinition());center.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messengerTitle=Ui.Title(selectedMomoGroup!=null?selectedMomoGroup.Name:(selectedMessengerMember==null?"Momo 信箱":"和 "+selectedMessengerMember.Nickname+" 的来信"),17);messengerTitle.Margin=new Thickness(2,0,0,12);center.Children.Add(messengerTitle);messengerConversation=new StackPanel{Margin=new Thickness(12)};var scroll=new ScrollViewer{Content=messengerConversation,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,Background=Ui.Inner};Grid.SetRow(scroll,1);center.Children.Add(scroll);var composer=new Grid{Margin=new Thickness(0,12,0,0)};composer.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});composer.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messengerAttachmentPanel=new WrapPanel{Margin=new Thickness(0,0,0,6)};composer.Children.Add(messengerAttachmentPanel);var composerRow=new Grid();composerRow.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});composerRow.ColumnDefinitions.Add(new ColumnDefinition());composerRow.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});var attachmentActions=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,8,0)};var attach=MakeButton("📎 文件",Ui.Neutral);attach.Height=44;attach.Padding=new Thickness(10,0,10,0);attach.ToolTip="选择文件，也可 Ctrl+V 粘贴或拖入窗口";attach.Click+=delegate{PickMomoFiles();};attachmentActions.Children.Add(attach);var attachFolder=MakeButton("文件夹",Ui.Neutral);attachFolder.Height=44;attachFolder.Padding=new Thickness(10,0,10,0);attachFolder.Margin=new Thickness(5,0,0,0);attachFolder.ToolTip="选择文件夹，邮局会自动打包为同名 ZIP";attachFolder.Click+=delegate{PickMomoFolder();};attachmentActions.Children.Add(attachFolder);composerRow.Children.Add(attachmentActions);messengerInput=new TextBox{Height=44,AcceptsReturn=false,ToolTip="写一封信；回车发送；Ctrl+V 粘贴文件",VerticalContentAlignment=VerticalAlignment.Center};messengerInput.KeyDown+=delegate(object sender,KeyEventArgs e){if(e.Key==Key.Enter){SendMomoMessage();e.Handled=true;}};Grid.SetColumn(messengerInput,1);composerRow.Children.Add(messengerInput);messengerSendButton=MakeButton("送出",Ui.Accent);messengerSendButton.Foreground=Brushes.White;messengerSendButton.Height=44;messengerSendButton.Margin=new Thickness(8,0,0,0);messengerSendButton.Click+=delegate{SendMomoMessage();};Grid.SetColumn(messengerSendButton,2);composerRow.Children.Add(messengerSendButton);Grid.SetRow(composerRow,1);composer.Children.Add(composerRow);Grid.SetRow(composer,2);center.Children.Add(composer);Grid.SetColumn(centerCard,1);messengerBody.Children.Add(centerCard);
+            var right=new StackPanel{Margin=new Thickness(0,10,0,0)};var me=new StackPanel();me.Children.Add(HubText((String.IsNullOrWhiteSpace(momoAccount.Avatar)?"🐾":momoAccount.Avatar)+"  "+momoAccount.Nickname,15,Ui.Ink,FontWeights.SemiBold));me.Children.Add(HubText("@"+momoAccount.Username,11.5,Ui.SubInk,FontWeights.Normal));right.Children.Add(HubCard(me,new Thickness(0,0,0,10),new Thickness(15)));var tip=new StackPanel();tip.Children.Add(HubText("小猫邮局",13,Ui.Ink,FontWeights.SemiBold));tip.Children.Add(HubText("私信会由对方的小猫送到桌面；小组消息安静留在信箱里。\n\n添加附件：复制文件或文件夹后按 Ctrl+V，也可直接拖入邮局。文件夹会自动打包为同名 ZIP；上传完成后点击“送出”。",11.5,Ui.SubInk,FontWeights.Normal));var preview=MakeButton("预览送信",Ui.Neutral);preview.Margin=new Thickness(0,10,0,0);preview.Click+=delegate{PreviewCourierSkin(selectedMessengerMember==null?(petMovement==null?"default":petMovement.SkinId):selectedMessengerMember.SkinId);};tip.Children.Add(preview);right.Children.Add(HubCard(tip,new Thickness(0,0,0,10),new Thickness(15)));messengerStatus=HubText("云端已连接",11.5,Ui.SubInk,FontWeights.Normal);right.Children.Add(messengerStatus);var logout=MakeButton("管理桌宠账号",Brushes.Transparent);logout.Margin=new Thickness(0,12,0,0);logout.Click+=delegate{OpenMomoAccountPanel();};right.Children.Add(logout);Grid.SetColumn(right,2);messengerBody.Children.Add(right);RefreshConversationView();RefreshAttachmentChips();LoadMomoGroups();
         }
 
         void LoadMessengerMembers()
         {
-            if(!IsMomoSignedIn())return;MomoApi<List<MomoRemoteMember>>("GET","/api/momo/members",null,true,delegate(List<MomoRemoteMember> items){messengerMembers.Clear();if(items!=null)messengerMembers.AddRange(items.Where(x=>x.Id!=momoAccount.MemberId));if(messengerContacts!=null){messengerContacts.ItemsSource=null;messengerContacts.ItemsSource=messengerMembers;}if(selectedMessengerMember==null&&messengerMembers.Count>0){selectedMessengerMember=messengerMembers[0];if(messengerContacts!=null)messengerContacts.SelectedItem=selectedMessengerMember;LoadConversation(selectedMessengerMember);}if(messengerStatus!=null)messengerStatus.Text="已同步 "+messengerMembers.Count+" 位联系人";},delegate(string error){if(messengerStatus!=null)messengerStatus.Text=error;});
+            if(!IsMomoSignedIn())return;MomoApi<List<MomoRemoteMember>>("GET","/api/momo/members",null,true,delegate(List<MomoRemoteMember> items){messengerMembers.Clear();if(items!=null)messengerMembers.AddRange(items.Where(x=>x.Id!=momoAccount.MemberId));if(messengerContacts!=null){messengerContacts.ItemsSource=null;messengerContacts.ItemsSource=messengerMembers;}if(selectedMessengerMember==null&&selectedMomoGroup==null&&messengerMembers.Count>0){selectedMessengerMember=messengerMembers[0];if(messengerContacts!=null)messengerContacts.SelectedItem=selectedMessengerMember;LoadConversation(selectedMessengerMember);}if(messengerStatus!=null)messengerStatus.Text="已同步 "+messengerMembers.Count+" 位联系人";},delegate(string error){if(messengerStatus!=null)messengerStatus.Text=error;});
         }
 
         void LoadMomoGroups()
@@ -360,30 +392,30 @@ namespace MomoPetApp
 
         void LoadMomoGroupConversation(MomoGroup group)
         {
-            if(group==null||messengerRequestBusy)return;messengerRequestBusy=true;if(messengerTitle!=null)messengerTitle.Text=group.Name+"  ·  "+(group.Members==null?0:group.Members.Count)+" 人";MomoApi<List<MomoGroupMessage>>("GET","/api/momo/groups/"+Uri.EscapeDataString(group.Id)+"/messages",null,true,delegate(List<MomoGroupMessage> items){messengerRequestBusy=false;momoGroupMessages.Clear();if(items!=null)momoGroupMessages.AddRange(items);RefreshConversationView();},delegate(string error){messengerRequestBusy=false;if(messengerStatus!=null)messengerStatus.Text=error;});
+            if(group==null)return;int requestId=++messengerViewRequestId;messengerRequestBusy=true;string groupId=group.Id;if(messengerTitle!=null)messengerTitle.Text=group.Name+"  ·  "+(group.Members==null?0:group.Members.Count)+" 人";MomoApi<List<MomoGroupMessage>>("GET","/api/momo/groups/"+Uri.EscapeDataString(groupId)+"/messages",null,true,delegate(List<MomoGroupMessage> items){if(requestId!=messengerViewRequestId)return;messengerRequestBusy=false;if(selectedMomoGroup==null||selectedMomoGroup.Id!=groupId||TextSelection.HasSelectionWithin(messengerPanel))return;momoGroupMessages.Clear();if(items!=null)momoGroupMessages.AddRange(items);RefreshConversationView();},delegate(string error){if(requestId!=messengerViewRequestId)return;messengerRequestBusy=false;if(messengerStatus!=null)messengerStatus.Text=error;});
         }
 
         void LoadConversation(MomoRemoteMember member)
         {
-            if(member==null||messengerRequestBusy)return;messengerRequestBusy=true;if(messengerTitle!=null)messengerTitle.Text="和 "+member.Nickname+" 的来信";MomoApi<List<MomoLetter>>("GET","/api/momo/messages/conversation/"+Uri.EscapeDataString(member.Id),null,true,delegate(List<MomoLetter> items){messengerRequestBusy=false;messengerLetters.Clear();if(items!=null)messengerLetters.AddRange(items);TrackLetterStatuses(items);RefreshConversationView();},delegate(string error){messengerRequestBusy=false;if(messengerStatus!=null)messengerStatus.Text=error;});
+            if(member==null)return;int requestId=++messengerViewRequestId;messengerRequestBusy=true;string memberId=member.Id;if(messengerTitle!=null)messengerTitle.Text="和 "+member.Nickname+" 的来信";MomoApi<List<MomoLetter>>("GET","/api/momo/messages/conversation/"+Uri.EscapeDataString(memberId),null,true,delegate(List<MomoLetter> items){if(requestId!=messengerViewRequestId)return;messengerRequestBusy=false;if(selectedMessengerMember==null||selectedMessengerMember.Id!=memberId||TextSelection.HasSelectionWithin(messengerPanel))return;messengerLetters.Clear();if(items!=null)messengerLetters.AddRange(items);TrackLetterStatuses(items);RefreshConversationView();},delegate(string error){if(requestId!=messengerViewRequestId)return;messengerRequestBusy=false;if(messengerStatus!=null)messengerStatus.Text=error;});
         }
 
         void RefreshConversationView()
         {
-            if(messengerConversation==null)return;messengerConversation.Children.Clear();if(selectedMomoGroup!=null){foreach(var message in momoGroupMessages.OrderBy(x=>x.CreatedAt)){bool mine=message.SenderId==momoAccount.MemberId;var body=new StackPanel();body.Children.Add(HubText(mine?"我":message.SenderNickname,10.5,mine?Ui.AccentDeep:Ui.SubInk,FontWeights.SemiBold));if(!String.IsNullOrWhiteSpace(message.Content))body.Children.Add(HubText(message.Content,13,Ui.Ink,FontWeights.Normal));AddAttachmentChips(body,message.Attachments,mine);body.Children.Add(HubText(ShortCloudTime(message.CreatedAt),10,Ui.SubInk,FontWeights.Normal));var card=HubCard(body,new Thickness(mine?72:0,0,mine?0:72,8),new Thickness(14,10,14,10));card.Background=mine?Ui.AccentSoft:Ui.Card;messengerConversation.Children.Add(card);}if(momoGroupMessages.Count==0)messengerConversation.Children.Add(BuildEmptyState("小组刚刚建好","发第一条消息，大家就能在这里看到。"));return;}if(selectedMessengerMember==null){messengerConversation.Children.Add(BuildEmptyState("欢迎来到 Momo 邮局","从左边选一位朋友，或点“拉个小组”。"));return;}foreach(var letter in messengerLetters.OrderBy(x=>x.CreatedAt)){bool mine=letter.SenderId==momoAccount.MemberId;var body=new StackPanel();if(!String.IsNullOrWhiteSpace(letter.Content))body.Children.Add(HubText(letter.Content,13,Ui.Ink,FontWeights.Normal));AddAttachmentChips(body,letter.Attachments,mine);string state=mine?(letter.Status=="read"?"对方已收信  "+ShortCloudTime(letter.ReadAt):(letter.Status=="delivered"?"小猫已送达":"正在送信")):"收到于 "+ShortCloudTime(letter.CreatedAt);body.Children.Add(HubText(state,10.5,letter.Status=="read"?Ui.Green:Ui.SubInk,FontWeights.Normal));var card=HubCard(body,new Thickness(mine?72:0,0,mine?0:72,8),new Thickness(14,10,14,10));card.Background=mine?Ui.AccentSoft:Ui.Card;messengerConversation.Children.Add(card);}
+            if(messengerConversation==null)return;TextSelection.Clear();messengerConversation.Children.Clear();if(selectedMomoGroup!=null){foreach(var message in momoGroupMessages.OrderBy(x=>x.CreatedAt)){bool mine=message.SenderId==momoAccount.MemberId;var body=new StackPanel();body.Children.Add(HubText(mine?"我":message.SenderNickname,10.5,mine?Ui.AccentDeep:Ui.SubInk,FontWeights.SemiBold));if(!String.IsNullOrWhiteSpace(message.Content))body.Children.Add(Ui.ReadOnlyText(message.Content,13));AddAttachmentChips(body,message.Attachments,mine);body.Children.Add(HubText(ShortCloudTime(message.CreatedAt),10,Ui.SubInk,FontWeights.Normal));var card=HubCard(body,new Thickness(mine?72:0,0,mine?0:72,8),new Thickness(14,10,14,10));card.Background=mine?Ui.AccentSoft:Ui.Card;messengerConversation.Children.Add(card);}if(momoGroupMessages.Count==0)messengerConversation.Children.Add(BuildEmptyState("小组刚刚建好","发第一条消息，大家就能在这里看到。"));return;}if(selectedMessengerMember==null){messengerConversation.Children.Add(BuildEmptyState("欢迎来到 Momo 邮局","从左边选一位朋友，或点“拉个小组”。"));return;}foreach(var letter in messengerLetters.OrderBy(x=>x.CreatedAt)){bool mine=letter.SenderId==momoAccount.MemberId;var body=new StackPanel();if(!String.IsNullOrWhiteSpace(letter.Content))body.Children.Add(Ui.ReadOnlyText(letter.Content,13));AddAttachmentChips(body,letter.Attachments,mine);string state=mine?(letter.Status=="read"?"对方已收信  "+ShortCloudTime(letter.ReadAt):(letter.Status=="delivered"?"小猫已送达":"正在送信")):"收到于 "+ShortCloudTime(letter.CreatedAt);body.Children.Add(HubText(state,10.5,letter.Status=="read"?Ui.Green:Ui.SubInk,FontWeights.Normal));var card=HubCard(body,new Thickness(mine?72:0,0,mine?0:72,8),new Thickness(14,10,14,10));card.Background=mine?Ui.AccentSoft:Ui.Card;messengerConversation.Children.Add(card);}
         }
 
         string ShortCloudTime(string value){DateTime time;if(DateTime.TryParse(value,out time))return time.ToLocalTime().ToString("MM-dd HH:mm");return "";}
 
         void SendMomoMessage()
         {
-            if((selectedMessengerMember==null&&selectedMomoGroup==null)||messengerInput==null)return;string content=(messengerInput.Text??"").Trim();if(String.IsNullOrWhiteSpace(content)&&pendingAttachments.Count==0){messengerStatus.Text="写句话，或者放个文件进去";return;}if(content.Length>1000){messengerStatus.Text="消息最多 1000 个字";return;}var body=new Dictionary<string,object>{{"content",content},{"skinId",petMovement==null?"default":petMovement.SkinId}};if(pendingAttachments.Count>0)body["attachments"]=pendingAttachments.Select(x=>new Dictionary<string,object>{{"name",x.Name??""},{"url",x.Url??""},{"type",x.Type??""},{"size",x.Size}}).ToList();SetMessengerBusy(true);if(selectedMomoGroup!=null){MomoApi<MomoGroupMessage>("POST","/api/momo/groups/"+Uri.EscapeDataString(selectedMomoGroup.Id)+"/messages",body,true,delegate(MomoGroupMessage message){SetMessengerBusy(false);messengerInput.Clear();pendingAttachments.Clear();RefreshAttachmentChips();if(message!=null)momoGroupMessages.Add(message);RefreshConversationView();messengerStatus.Text="已发到小组";},delegate(string error){SetMessengerBusy(false);messengerStatus.Text=error;});return;}body["receiverId"]=selectedMessengerMember.Id;MomoApi<MomoLetter>("POST","/api/momo/messages",body,true,delegate(MomoLetter letter){SetMessengerBusy(false);messengerInput.Clear();pendingAttachments.Clear();RefreshAttachmentChips();if(letter!=null){if(!String.IsNullOrWhiteSpace(letter.Id)){knownLetterStatus[letter.Id]=letter.Status??"sent";awaitingReceipts.Add(letter);}messengerLetters.Add(letter);}RefreshConversationView();messengerStatus.Text="小猫已经出发";},delegate(string error){SetMessengerBusy(false);messengerStatus.Text=error;});
+            if(messengerSendBusy||momoFileOperationBusy||(selectedMessengerMember==null&&selectedMomoGroup==null)||messengerInput==null)return;string content=(messengerInput.Text??"").Trim();if(String.IsNullOrWhiteSpace(content)&&pendingAttachments.Count==0){messengerStatus.Text="写句话，或者放个文件进去";return;}if(content.Length>1000){messengerStatus.Text="消息最多 1000 个字";return;}var body=new Dictionary<string,object>{{"content",content},{"skinId",petMovement==null?"default":petMovement.SkinId}};if(pendingAttachments.Count>0)body["attachments"]=pendingAttachments.Select(x=>new Dictionary<string,object>{{"name",x.Name??""},{"url",x.Url??""},{"type",x.Type??""},{"size",x.Size}}).ToList();messengerSendBusy=true;SetMessengerBusy(true);if(selectedMomoGroup!=null){MomoApi<MomoGroupMessage>("POST","/api/momo/groups/"+Uri.EscapeDataString(selectedMomoGroup.Id)+"/messages",body,true,delegate(MomoGroupMessage message){messengerSendBusy=false;SetMessengerBusy(false);messengerInput.Clear();pendingAttachments.Clear();RefreshAttachmentChips();if(message!=null)momoGroupMessages.Add(message);RefreshConversationView();messengerStatus.Text="已发到小组";},delegate(string error){messengerSendBusy=false;SetMessengerBusy(false);messengerStatus.Text=error;});return;}body["receiverId"]=selectedMessengerMember.Id;MomoApi<MomoLetter>("POST","/api/momo/messages",body,true,delegate(MomoLetter letter){messengerSendBusy=false;SetMessengerBusy(false);messengerInput.Clear();pendingAttachments.Clear();RefreshAttachmentChips();if(letter!=null){if(!String.IsNullOrWhiteSpace(letter.Id)){knownLetterStatus[letter.Id]=letter.Status??"sent";awaitingReceipts.Add(letter);}messengerLetters.Add(letter);}RefreshConversationView();messengerStatus.Text="小猫已经出发";},delegate(string error){messengerSendBusy=false;SetMessengerBusy(false);messengerStatus.Text=error;});
         }
 
         void PollMomoMessages()
         {
             if(!IsMomoSignedIn()||messengerRequestBusy)return;MomoApi<List<MomoLetter>>("GET","/api/momo/messages/inbox?unread=1",null,true,delegate(List<MomoLetter> items){if(items==null)return;foreach(var letter in items.OrderBy(x=>x.CreatedAt)){if(String.IsNullOrWhiteSpace(letter.Id)||knownLetterIds.Contains(letter.Id))continue;knownLetterIds.Add(letter.Id);// 陌生发件人先刷新联系人，送信文案才能显示 @用户名
-if(!messengerMembers.Any(x=>x.Id==letter.SenderId))LoadMessengerMembers();courierQueue.Enqueue(letter);MarkLetterDelivered(letter);}if(activeCourierLetter==null&&courierQueue.Count>0)StartNextCourier();PollPendingReceipts();PollReceiptConversations();if(selectedMessengerMember!=null)LoadConversation(selectedMessengerMember);else if(selectedMomoGroup!=null)LoadMomoGroupConversation(selectedMomoGroup);},delegate(string error){if(messengerStatus!=null)messengerStatus.Text=error;});
+if(!messengerMembers.Any(x=>x.Id==letter.SenderId))LoadMessengerMembers();courierQueue.Enqueue(letter);MarkLetterDelivered(letter);}if(activeCourierLetter==null&&courierQueue.Count>0)StartNextCourier();PollPendingReceipts();PollReceiptConversations();if(!TextSelection.HasSelectionWithin(messengerPanel)){if(selectedMessengerMember!=null)LoadConversation(selectedMessengerMember);else if(selectedMomoGroup!=null)LoadMomoGroupConversation(selectedMomoGroup);}},delegate(string error){if(messengerStatus!=null)messengerStatus.Text=error;});
         }
 
         void MarkLetterDelivered(MomoLetter letter){MomoApi<Dictionary<string,object>>("POST","/api/momo/messages/"+Uri.EscapeDataString(letter.Id)+"/delivered",null,true,delegate(Dictionary<string,object> ignored){},delegate(string ignored){});}
@@ -495,7 +527,7 @@ if(!messengerMembers.Any(x=>x.Id==letter.SenderId))LoadMessengerMembers();courie
 
         void ShowReceivedLetter(MomoLetter letter)
         {
-            bool preview=String.IsNullOrWhiteSpace(letter.Id);var dialog=new Window{Title="收到一封信",Width=470,Height=330,MinWidth=420,MinHeight=280,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.CanResize,ShowInTaskbar=false,AllowsTransparency=true,Background=Brushes.Transparent,Topmost=true};Ui.StyleWindow(dialog);var shell=new Border{CornerRadius=new CornerRadius(20),Padding=new Thickness(24)};Ui.StyleCard(shell);var root=new Grid();root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});var header=new Grid{Cursor=Cursors.SizeAll};header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});var title=new StackPanel();title.Children.Add(Ui.Title("来自 "+letter.SenderNickname+" 的信",20));title.Children.Add(Ui.Subtitle(preview?"送信动画预览":"点击收信回执已送出 · "+ShortCloudTime(letter.CreatedAt)));header.Children.Add(title);var close=Ui.MakeCloseButton();close.Click+=delegate{dialog.Close();};Grid.SetColumn(close,1);header.Children.Add(close);header.MouseLeftButtonDown+=delegate{try{dialog.DragMove();}catch{}};root.Children.Add(header);var letterBody=new StackPanel{Margin=new Thickness(4,18,4,18)};if(!String.IsNullOrWhiteSpace(letter.Content))letterBody.Children.Add(new TextBlock{Text=letter.Content,FontSize=14,Foreground=Ui.Ink,TextWrapping=TextWrapping.Wrap,LineHeight=23});AddAttachmentChips(letterBody,letter.Attachments,false);Grid.SetRow(letterBody,1);root.Children.Add(letterBody);var reply=MakeButton(preview?"完成预览":"回复 "+letter.SenderNickname,Ui.Accent);reply.Foreground=Brushes.White;reply.HorizontalAlignment=HorizontalAlignment.Right;reply.Click+=delegate{dialog.Close();if(preview)return;OpenMessengerPanel();selectedMessengerMember=messengerMembers.FirstOrDefault(x=>x.Id==letter.SenderId);RefreshMessengerBody();if(selectedMessengerMember!=null)LoadConversation(selectedMessengerMember);};Grid.SetRow(reply,2);root.Children.Add(reply);shell.Child=root;dialog.Content=shell;var work=SystemParameters.WorkArea;dialog.Left=Math.Max(work.Left+8,Math.Min(pet.Left-dialog.Width-12,work.Right-dialog.Width-8));dialog.Top=Math.Max(work.Top+8,Math.Min(pet.Top-dialog.Height+pet.Height,work.Bottom-dialog.Height-8));dialog.Show();
+            bool preview=String.IsNullOrWhiteSpace(letter.Id);var dialog=new Window{Title="收到一封信",Width=470,Height=330,MinWidth=420,MinHeight=280,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.CanResize,ShowInTaskbar=false,AllowsTransparency=true,Background=Brushes.Transparent,Topmost=true};Ui.StyleWindow(dialog);var shell=new Border{CornerRadius=new CornerRadius(20),Padding=new Thickness(24)};Ui.StyleCard(shell);var root=new Grid();root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});var header=new Grid{Cursor=Cursors.SizeAll};header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});var title=new StackPanel();title.Children.Add(Ui.Title("来自 "+letter.SenderNickname+" 的信",20));title.Children.Add(Ui.Subtitle(preview?"送信动画预览":"点击收信回执已送出 · "+ShortCloudTime(letter.CreatedAt)));header.Children.Add(title);var close=Ui.MakeCloseButton();close.Click+=delegate{dialog.Close();};Grid.SetColumn(close,1);header.Children.Add(close);header.MouseLeftButtonDown+=delegate{try{dialog.DragMove();}catch{}};root.Children.Add(header);var letterBody=new StackPanel{Margin=new Thickness(4,18,4,18)};if(!String.IsNullOrWhiteSpace(letter.Content))letterBody.Children.Add(Ui.ReadOnlyText(letter.Content,14));AddAttachmentChips(letterBody,letter.Attachments,false);var letterScroll=new ScrollViewer{Content=letterBody,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};Grid.SetRow(letterScroll,1);root.Children.Add(letterScroll);var reply=MakeButton(preview?"完成预览":"回复 "+letter.SenderNickname,Ui.Accent);reply.Foreground=Brushes.White;reply.HorizontalAlignment=HorizontalAlignment.Right;reply.Click+=delegate{dialog.Close();if(preview)return;OpenMessengerPanel();selectedMessengerMember=messengerMembers.FirstOrDefault(x=>x.Id==letter.SenderId);RefreshMessengerBody();if(selectedMessengerMember!=null)LoadConversation(selectedMessengerMember);};Grid.SetRow(reply,2);root.Children.Add(reply);shell.Child=root;dialog.Content=shell;var work=SystemParameters.WorkArea;dialog.Left=Math.Max(work.Left+8,Math.Min(pet.Left-dialog.Width-12,work.Right-dialog.Width-8));dialog.Top=Math.Max(work.Top+8,Math.Min(pet.Top-dialog.Height+pet.Height,work.Bottom-dialog.Height-8));dialog.Show();
         }
 
         void FinishCourier()
@@ -513,7 +545,7 @@ if(!messengerMembers.Any(x=>x.Id==letter.SenderId))LoadMessengerMembers();courie
             courierQueue.Enqueue(new MomoLetter{Id="",SenderId="",SenderNickname=SkinName(String.IsNullOrWhiteSpace(skinId)?"default":skinId),SenderSkinId=String.IsNullOrWhiteSpace(skinId)?"default":skinId,Content="这是一封送信动画预览。真实来信会在点击后把“已收信”回执送回给对方。",CreatedAt=DateTime.Now.ToString("o"),Status="sent"});if(activeCourierLetter==null)StartNextCourier();
         }
 
-        void SetMessengerTopmost(bool value){if(messengerPanel!=null)messengerPanel.Topmost=value;if(courierWindow!=null)courierWindow.Topmost=true;}
-        void CloseMessengerWindows(){if(messengerPollTimer!=null)messengerPollTimer.Stop();if(courierTimer!=null)courierTimer.Stop();if(receiptTimer!=null)receiptTimer.Stop();if(courierWindow!=null)courierWindow.Close();if(receiptWindow!=null)receiptWindow.Close();if(messengerPanel!=null)messengerPanel.Close();}
+        void SetMessengerTopmost(bool value){if(momoAccountPanel!=null)momoAccountPanel.Topmost=value;if(messengerPanel!=null)messengerPanel.Topmost=value;if(courierWindow!=null)courierWindow.Topmost=true;}
+        void CloseMessengerWindows(){if(momoAccountPanel!=null)momoAccountPanel.Close();if(messengerPollTimer!=null)messengerPollTimer.Stop();if(courierTimer!=null)courierTimer.Stop();if(receiptTimer!=null)receiptTimer.Stop();if(courierWindow!=null)courierWindow.Close();if(receiptWindow!=null)receiptWindow.Close();if(messengerPanel!=null)messengerPanel.Close();}
     }
 }

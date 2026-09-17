@@ -56,23 +56,72 @@ namespace MomoPetApp
 
         void CancelLauncherOpen(){if(launcherClickTimer!=null)launcherClickTimer.Stop();}
 
+        Button launcherAccountButton;
+        Canvas launcherCategoryCanvas;
+        TextBlock launcherCategoryHint;
+        readonly List<Button> launcherCategoryButtons=new List<Button>();
+        int launcherCategoryIndex;
+
+        void RefreshLauncherIdentity()
+        {
+            if(launcherAccountButton==null)return;
+            var identity=new StackPanel{Orientation=Orientation.Horizontal};
+            identity.Children.Add(CommunityCat(28));
+            var label=HubText(IsMomoSignedIn()?momoAccount.Nickname+"  ·  桌宠账号":"登录桌宠账号",12,Ui.Ink,FontWeights.SemiBold);
+            label.VerticalAlignment=VerticalAlignment.Center;label.Margin=new Thickness(8,0,0,0);label.MaxWidth=218;label.TextTrimming=TextTrimming.CharacterEllipsis;identity.Children.Add(label);
+            launcherAccountButton.Content=identity;
+        }
+
         void BuildLauncherPanel()
         {
-            launcherPanel=new Window{Title="博道咪功能入口",Width=602,Height=210,MinWidth=500,MinHeight=176,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.CanResize,ShowInTaskbar=false,AllowsTransparency=true,Background=Brushes.Transparent,Topmost=pet.Topmost};Ui.StyleWindow(launcherPanel);
-            var canvas=new Canvas{Width=602,Height=210};launcherBubbles.Clear();
-            AddLauncherBubble(canvas,"📝","工作记录",10,10,"记录事项、重复日程与提醒",delegate{TogglePanel();});
-            AddLauncherBubble(canvas,"📦","中转袋",204,10,"搜索、预览与拖出各类文件",delegate{ToggleStashPanel();});
-            AddLauncherBubble(canvas,"✨","AI 口袋",398,10,"AI 对话、图片生成与编辑",delegate{OpenAiPocketChat("");});
-            AddLauncherBubble(canvas,"📈","大盘盯盘",10,76,"行情监控与收盘汇总",delegate{ToggleMarketPanel();});
-            AddLauncherBubble(canvas,"🔎","Wind AI",204,76,"自然语言查询金融数据",delegate{ToggleAiSearchPanel();});
-            AddLauncherBubble(canvas,"🛡","合规审核",398,76,"规则初筛、模型复核与留痕",delegate{OpenComplianceReview();});
-            AddLauncherBubble(canvas,"☕","社区 · 来信",10,142,"分享经验，也让朋友的小猫来送信",delegate{OpenCommunityPanel();});
-            AddLauncherBubble(canvas,"▦","AI 应用",204,142,"发现、管理并直接运行 AI 应用",delegate{OpenAiAppsPanel();});
-            AddLauncherBubble(canvas,"◇","资源中心",398,142,"集中整理 Skill 与素材",delegate{OpenResourceCenterPanel();});
-            var close=new Border{Width=22,Height=22,CornerRadius=new CornerRadius(11),Background=Ui.Card,BorderBrush=Ui.Line,BorderThickness=new Thickness(1),Cursor=Cursors.Hand,ToolTip="收起"};close.Child=new TextBlock{Text="×",FontFamily=new FontFamily("Segoe UI Symbol"),FontSize=13,Foreground=Ui.SubInk,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,-1,0,0)};close.MouseLeftButtonUp+=delegate{HideLauncherAndRestoreShelves();};Canvas.SetLeft(close,576);Canvas.SetTop(close,4);Panel.SetZIndex(close,10);canvas.Children.Add(close);
-            // 入口本身也能调整大小，功能卡片按比例同步缩放，不留大片空白。
-            var launcherView=new Viewbox{Stretch=Stretch.Uniform,Child=canvas};launcherPanel.Content=launcherView;
+            launcherPanel=new Window{Title="博道咪功能入口",Width=384,Height=354,MinWidth=0,MinHeight=0,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,ShowInTaskbar=false,AllowsTransparency=true,Background=Brushes.Transparent,Topmost=pet.Topmost};Ui.StyleWindow(launcherPanel);
+            var shell=new Border{Margin=new Thickness(6),Padding=new Thickness(14),CornerRadius=new CornerRadius(20),Background=Ui.Paper,BorderBrush=Ui.Line,BorderThickness=new Thickness(1)};
+            var layout=new Grid();layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(42)});layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(44)});layout.RowDefinitions.Add(new RowDefinition());layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(20)});shell.Child=layout;
+            var header=new Grid();header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(30)});layout.Children.Add(header);
+            launcherAccountButton=MakeButton("",Brushes.Transparent);launcherAccountButton.Height=34;
+            launcherAccountButton.HorizontalAlignment=HorizontalAlignment.Left;launcherAccountButton.HorizontalContentAlignment=HorizontalAlignment.Left;launcherAccountButton.Padding=new Thickness(2,0,8,0);launcherAccountButton.BorderThickness=new Thickness(0);launcherAccountButton.ToolTip="管理桌宠账号";
+            launcherAccountButton.Click+=delegate{HideLauncherAndRestoreShelves();OpenMomoAccountPanel();};
+            header.Children.Add(launcherAccountButton);RefreshLauncherIdentity();
+            var close=MakeButton("×",Brushes.Transparent);close.Width=28;close.Height=28;close.Padding=new Thickness(0);close.BorderThickness=new Thickness(0);close.ToolTip="收起（Esc）";close.Click+=delegate{HideLauncherAndRestoreShelves();};Grid.SetColumn(close,1);header.Children.Add(close);
+            var tabs=new UniformGrid{Rows=1,Margin=new Thickness(0,3,0,9)};Grid.SetRow(tabs,1);layout.Children.Add(tabs);launcherCategoryButtons.Clear();
+            string[] categories={"办公","AI 工作台","金融","交流","桌宠"};
+            for(int i=0;i<categories.Length;i++){
+                int category=i;var tab=MakeButton(categories[i],Brushes.Transparent);tab.Height=30;tab.Padding=new Thickness(0);tab.Margin=new Thickness(2,0,2,0);tab.FontSize=12;tab.BorderThickness=new Thickness(0);
+                tab.Click+=delegate{ShowLauncherCategory(category);AnimateLauncherBubbles();};tabs.Children.Add(tab);launcherCategoryButtons.Add(tab);
+            }
+            launcherCategoryCanvas=new Canvas();Grid.SetRow(launcherCategoryCanvas,2);layout.Children.Add(launcherCategoryCanvas);
+            launcherCategoryHint=HubText("",10,Ui.SubInk,FontWeights.Normal);launcherCategoryHint.VerticalAlignment=VerticalAlignment.Bottom;Grid.SetRow(launcherCategoryHint,3);layout.Children.Add(launcherCategoryHint);
+            launcherPanel.Content=shell;ShowLauncherCategory(launcherCategoryIndex);
             launcherPanel.Deactivated+=delegate{HideLauncherAndRestoreShelves();};launcherPanel.KeyDown+=delegate(object sender,KeyEventArgs e){if(e.Key==Key.Escape){HideLauncherAndRestoreShelves();e.Handled=true;}};launcherPanel.Closing+=delegate(object s,System.ComponentModel.CancelEventArgs e){if(!exiting){e.Cancel=true;HideLauncherAndRestoreShelves();}};
+        }
+
+        void ShowLauncherCategory(int index)
+        {
+            if(launcherCategoryCanvas==null||index<0||index>=launcherCategoryButtons.Count)return;
+            launcherCategoryIndex=index;launcherCategoryCanvas.Children.Clear();launcherBubbles.Clear();
+            for(int i=0;i<launcherCategoryButtons.Count;i++){var tab=launcherCategoryButtons[i];tab.Background=i==index?Ui.AccentSoft:Brushes.Transparent;tab.Foreground=i==index?Ui.AccentDeep:Ui.SubInk;tab.FontWeight=i==index?FontWeights.Bold:FontWeights.Normal;}
+            var canvas=launcherCategoryCanvas;
+            switch(index){
+                case 0:
+                    AddLauncherBubble(canvas,"📝","工作记录",0,0,"记录事项、重复日程与提醒",delegate{TogglePanel();});
+                    AddLauncherBubble(canvas,"📦","中转袋",0,68,"搜索、预览与拖出各类文件",delegate{ToggleStashPanel();});
+                    AddLauncherBubble(canvas,"🛡","合规审核",0,136,"规则初筛、模型复核与留痕",delegate{OpenComplianceReview();});break;
+                case 1:
+                    AddLauncherBubble(canvas,"✨","AI 口袋",0,0,"AI 对话、图片生成与编辑",delegate{OpenAiPocketChat("");});
+                    AddLauncherBubble(canvas,"▦","AI 应用",0,68,"发现、管理并直接运行 AI 应用",delegate{OpenAiAppsPanel();});
+                    AddLauncherBubble(canvas,"◇","资源中心",0,136,"集中整理 Skill 与素材",delegate{OpenResourceCenterPanel();});break;
+                case 2:
+                    AddLauncherBubble(canvas,"📈","大盘盯盘",0,0,"行情监控与收盘汇总",delegate{ToggleMarketPanel();});
+                    AddLauncherBubble(canvas,"🔎","Wind AI",0,68,"自然语言查询金融数据",delegate{ToggleAiSearchPanel();});break;
+                case 3:
+                    AddLauncherBubble(canvas,"☕","AI 社区",0,0,"分享实践经验，收藏好想法",delegate{OpenCommunityPanel();});
+                    AddLauncherBubble(canvas,"💌","Momo 邮局",0,68,"私信、小组、文件与小猫送信",delegate{OpenMessengerPanel();});break;
+                case 4:
+                    AddLauncherBubble(canvas,"🌿","健康陪伴",0,0,"护眼、久坐与补水提醒",delegate{OpenHealthCompanion();});
+                    AddLauncherBubble(canvas,"♡","小猫衣橱",0,68,"换一套喜欢的皮肤",delegate{OpenSkinWardrobe();});
+                    AddLauncherBubble(canvas,"⚙","桌宠设置",0,136,"活动范围、性格与快捷键",delegate{OpenMovementSettings();});break;
+            }
+            launcherCategoryHint.Text="本组 "+launcherBubbles.Count+" 个功能  ·  点击分类切换";
         }
 
         void BuildShelfPeekPanel()
@@ -120,7 +169,8 @@ namespace MomoPetApp
         void AddLauncherBubble(Canvas canvas,string icon,string label,double left,double top,string tooltip,Action action)
         {
             var content=new Grid{Margin=new Thickness(14,0,12,0)};content.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(34)});content.ColumnDefinitions.Add(new ColumnDefinition());var iconText=new TextBlock{Text=icon,FontSize=20,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Left};content.Children.Add(iconText);var copy=new StackPanel{VerticalAlignment=VerticalAlignment.Center};copy.Children.Add(new TextBlock{Text=label,FontSize=12.5,FontWeight=FontWeights.Bold,Foreground=Ui.Ink});copy.Children.Add(new TextBlock{Text=tooltip,FontSize=9.5,Foreground=Ui.SubInk,Margin=new Thickness(0,2,0,0)});Grid.SetColumn(copy,1);content.Children.Add(copy);
-            var bubble=new Border{Width=180,Height=58,CornerRadius=new CornerRadius(13),Background=Ui.Card,BorderBrush=Ui.Line,BorderThickness=new Thickness(1),Child=content,Cursor=Cursors.Hand,ToolTip=tooltip,RenderTransformOrigin=new Point(.5,.5),Effect=new DropShadowEffect{Color=Colors.Black,BlurRadius=12,ShadowDepth=2,Opacity=.07,RenderingBias=RenderingBias.Performance}};var scale=new ScaleTransform(1,1);bubble.RenderTransform=scale;
+            var bubble=new Border{Width=342,Height=60,CornerRadius=new CornerRadius(13),Background=Ui.Card,BorderBrush=Ui.Line,BorderThickness=new Thickness(1),Child=content,Cursor=Cursors.Hand,Focusable=true,ToolTip=tooltip,RenderTransformOrigin=new Point(.5,.5),Effect=new DropShadowEffect{Color=Colors.Black,BlurRadius=8,ShadowDepth=1,Opacity=.04,RenderingBias=RenderingBias.Performance}};var scale=new ScaleTransform(1,1);bubble.RenderTransform=scale;
+            bubble.KeyDown+=delegate(object sender,KeyEventArgs e){if(e.Key==Key.Enter||e.Key==Key.Space){e.Handled=true;HideLauncherAndRestoreShelves();action();}};
             bubble.MouseEnter+=delegate{scale.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(1.018,TimeSpan.FromMilliseconds(110)));scale.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1.018,TimeSpan.FromMilliseconds(110)));bubble.BorderBrush=Ui.Accent;};
             bubble.MouseLeave+=delegate{scale.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(1,TimeSpan.FromMilliseconds(180)));scale.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1,TimeSpan.FromMilliseconds(180)));bubble.BorderBrush=Ui.Line;};
             bubble.MouseLeftButtonUp+=delegate{HideLauncherAndRestoreShelves();action();};Canvas.SetLeft(bubble,left);Canvas.SetTop(bubble,top);canvas.Children.Add(bubble);launcherBubbles.Add(bubble);
@@ -147,7 +197,7 @@ namespace MomoPetApp
 
         void ToggleLauncherPanel()
         {
-            HideShelfPeek();if(launcherPanel==null)BuildLauncherPanel();if(shelvedWindows.ContainsKey(launcherPanel))RestoreWindow(launcherPanel);if(launcherPanel.IsVisible)HideLauncherAndRestoreShelves();else{HideShelvedTagsForLauncher();PositionLauncherPanel();launcherPanel.Show();launcherPanel.Activate();AnimateLauncherBubbles();if(!edgeHidden)React("选一个泡泡吧～",false);}
+            HideShelfPeek();if(launcherPanel==null)BuildLauncherPanel();RefreshLauncherIdentity();if(shelvedWindows.ContainsKey(launcherPanel))RestoreWindow(launcherPanel);if(launcherPanel.IsVisible)HideLauncherAndRestoreShelves();else{HideShelvedTagsForLauncher();PositionLauncherPanel();launcherPanel.Show();launcherPanel.Activate();AnimateLauncherBubbles();if(!edgeHidden)React("选一个泡泡吧～",false);}
         }
 
         void HideShelvedTagsForLauncher(){foreach(Window window in shelvedWindows.Keys.ToList())if(window!=launcherPanel)window.Hide();}
@@ -199,7 +249,7 @@ namespace MomoPetApp
 
         void SavePetMovementSettings()
         {
-            try{System.IO.File.WriteAllText(MovementSettingsFile(),json.Serialize(petMovement),System.Text.Encoding.UTF8);}catch{}
+            try{MomoStorage.WriteTextAtomic(MovementSettingsFile(),json.Serialize(petMovement),System.Text.Encoding.UTF8);}catch{}
         }
 
         Rect PetMovementBounds()
@@ -325,7 +375,7 @@ namespace MomoPetApp
 
         string ShelfLabel(Window window)
         {
-            if(window==stashPanel)return "中转 "+stashItems.Count;if(window==panel)return "工作簿";if(window==launcherPanel)return "功能";if(window==marketPanel)return "盯盘";if(window==aiSearchPanel)return "Wind AI";if(window==imageEditorPanel)return "AI 口袋";if(window==communityPanel)return "AI 社区";if(window==messengerPanel)return "账号与来信";if(window==aiAppsPanel)return "AI 应用";if(window==resourceCenterPanel)return "资源中心";if(window==movementSettingsPanel)return "活动范围";if(window==aiSettingsPanel||window==imageAiSettingsPanel)return "模型设置";return String.IsNullOrWhiteSpace(window.Title)?"临时窗口":window.Title.Replace("博道咪","").Trim();
+            if(window==stashPanel)return "中转 "+stashItems.Count;if(window==panel)return "工作簿";if(window==launcherPanel)return "功能";if(window==marketPanel)return "盯盘";if(window==aiSearchPanel)return "Wind AI";if(window==imageEditorPanel)return "AI 口袋";if(window==communityPanel)return "AI 社区";if(window==messengerPanel)return "Momo 邮局";if(window==momoAccountPanel)return "我的账号";if(window==aiAppsPanel)return "AI 应用";if(window==resourceCenterPanel)return "资源中心";if(window==movementSettingsPanel)return "活动范围";if(window==aiSettingsPanel||window==imageAiSettingsPanel)return "模型设置";return String.IsNullOrWhiteSpace(window.Title)?"临时窗口":window.Title.Replace("博道咪","").Trim();
         }
 
         void RestoreWindow(Window window)

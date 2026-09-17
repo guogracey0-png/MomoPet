@@ -27,9 +27,17 @@ static class EmbeddedRuntime
 
     static string appDir;
     static readonly Assembly asm = Assembly.GetExecutingAssembly();
+    static readonly string[] requiredFiles = {
+        "MomoOcr.exe", "wind_bridge\\wind_ai_search.mjs", "wind_bridge\\image_ai.mjs",
+        "compliance-rules.txt", "node.exe", ".agents\\skills\\wind-mcp-skill\\scripts\\cli.mjs"
+    };
+    public static bool IsReady { get; private set; }
+    public static string LastInitializationError { get; private set; }
 
     public static void Initialize(string dataDir)
     {
+        IsReady = false;
+        LastInitializationError = null;
         try
         {
             appDir = Path.Combine(dataDir, "app");
@@ -38,13 +46,32 @@ static class EmbeddedRuntime
             string stamp = File.GetLastWriteTimeUtc(asm.Location).Ticks.ToString();
             string oldStamp = null;
             try { oldStamp = File.ReadAllText(stampPath).Trim(); } catch { }
-            if (oldStamp == stamp) return;
+            if (oldStamp == stamp && ValidateExtractedFiles()) { IsReady = true; return; }
             foreach (string relative in extractFiles) ExtractPlain(relative);
             foreach (string relative in extractGzipFiles) ExtractGzip(relative);
             ExtractSkills();
-            try { File.WriteAllText(stampPath, stamp); } catch { }
+            if (!ValidateExtractedFiles())
+            {
+                LastInitializationError = "运行组件未完整释放，将在下次启动自动修复";
+                try { if (File.Exists(stampPath)) File.Delete(stampPath); } catch { }
+                return;
+            }
+            File.WriteAllText(stampPath, stamp);
+            IsReady = true;
         }
-        catch { }
+        catch (Exception error)
+        {
+            LastInitializationError = error.Message;
+            try { if (appDir != null) File.Delete(Path.Combine(appDir, "stamp.txt")); } catch { }
+        }
+    }
+
+    static bool ValidateExtractedFiles()
+    {
+        if (String.IsNullOrWhiteSpace(appDir)) return false;
+        foreach (string relative in requiredFiles)
+            if (!File.Exists(Path.Combine(appDir, relative))) return false;
+        return true;
     }
 
     static void ExtractPlain(string relative)

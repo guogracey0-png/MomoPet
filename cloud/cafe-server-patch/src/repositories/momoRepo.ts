@@ -11,6 +11,8 @@ export const MOMO_TABLES = {
   groups: `${TABLE_PREFIX}momo_groups`,
   groupMembers: `${TABLE_PREFIX}momo_group_members`,
   groupMessages: `${TABLE_PREFIX}momo_group_messages`,
+  communityPosts: `${TABLE_PREFIX}momo_community_posts`,
+  communityPackages: `${TABLE_PREFIX}momo_community_packages`,
 } as const;
 
 const allowedSkins = new Set([
@@ -47,6 +49,8 @@ export type MomoMessage = {
 
 export type MomoGroup = { id: string; name: string; ownerId: string; memberIds: string[]; createdAt: string };
 export type MomoGroupMessage = { id: string; groupId: string; senderId: string; senderNickname: string; senderSkinId: string; content: string; attachments: MomoAttachment[]; createdAt: string };
+export type MomoCommunityPost = { id:string;authorId:string;author:string;title:string;body:string;category:string;tags:string;createdAt:string;likes:number;likedBy:string[] };
+export type MomoCommunityPackage = { id:string;kind:"skill"|"app";authorId:string;author:string;name:string;description:string;version:string;file:MomoAttachment;createdAt:string;downloads:number };
 
 function parseStrings(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String);
@@ -85,6 +89,11 @@ function fromRow(row: Record<string, any>): MomoMessage {
 }
 
 export const momoRepo = {
+  async communityPosts(memberId:string){const rows=await getRange(MOMO_TABLES.communityPosts,[pk("createdAt",INF_MIN),pk("id",INF_MIN)],[pk("createdAt",INF_MAX),pk("id",INF_MAX)]);return rows.map(row=>{const likedBy=parseStrings(row.likedBy);return {id:String(row.id||""),authorId:String(row.authorId||""),author:String(row.author||""),title:String(row.title||""),body:String(row.body||""),category:String(row.category||"实践分享"),tags:String(row.tags||""),createdAt:String(row.createdAt||""),likes:Number(row.likes)||0,likedBy,liked:likedBy.includes(memberId)};}).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,300);},
+  async createCommunityPost(authorId:string,author:string,input:any){const post:MomoCommunityPost={id:generateId("post"),authorId,author,title:String(input.title||"").trim().slice(0,120),body:String(input.body||"").trim().slice(0,10000),category:String(input.category||"实践分享").slice(0,30),tags:String(input.tags||"").slice(0,200),createdAt:new Date().toISOString(),likes:0,likedBy:[]};await putRow(MOMO_TABLES.communityPosts,[pk("createdAt",post.createdAt),pk("id",post.id)],[attr("authorId",post.authorId),attr("author",post.author),attr("title",post.title),attr("body",post.body),attr("category",post.category),attr("tags",post.tags),attr("likes",0),attr("likedBy",[])]);return post;},
+  async toggleCommunityLike(memberId:string,id:string){const posts=await this.communityPosts(memberId);const found=posts.find(x=>x.id===id);if(!found)return null;const likedBy=found.likedBy.includes(memberId)?found.likedBy.filter(x=>x!==memberId):[...found.likedBy,memberId];await updateRow(MOMO_TABLES.communityPosts,[pk("createdAt",found.createdAt),pk("id",found.id)],[attr("likedBy",likedBy),attr("likes",likedBy.length)]);return {...found,likedBy,likes:likedBy.length,liked:likedBy.includes(memberId)};},
+  async communityPackages(kind:string){const kinds=kind==="skill"||kind==="app"?[kind]:["skill","app"];const rows=(await Promise.all(kinds.map(value=>getRange(MOMO_TABLES.communityPackages,[pk("kind",value),pk("createdAt",INF_MIN),pk("id",INF_MIN)],[pk("kind",value),pk("createdAt",INF_MAX),pk("id",INF_MAX)])))).flat();return rows.map(row=>({id:String(row.id||""),kind:String(row.kind||"skill"),authorId:String(row.authorId||""),author:String(row.author||""),name:String(row.name||""),description:String(row.description||""),version:String(row.version||"1.0"),file:parseAttachments(row.file)[0]||null,createdAt:String(row.createdAt||""),downloads:Number(row.downloads)||0})).filter(x=>x.file).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,300);},
+  async createCommunityPackage(authorId:string,author:string,input:any){const item:MomoCommunityPackage={id:generateId("pkg"),kind:input.kind,authorId,author,name:String(input.name||"").trim().slice(0,120),description:String(input.description||"").trim().slice(0,1000),version:String(input.version||"1.0").trim().slice(0,30),file:input.file,createdAt:new Date().toISOString(),downloads:0};await putRow(MOMO_TABLES.communityPackages,[pk("kind",item.kind),pk("createdAt",item.createdAt),pk("id",item.id)],[attr("authorId",item.authorId),attr("author",item.author),attr("name",item.name),attr("description",item.description),attr("version",item.version),attr("file",[item.file]),attr("downloads",0)]);return item;},
   async createSession(memberId: string) {
     const token = randomBytes(32).toString("base64url");
     const now = new Date();
