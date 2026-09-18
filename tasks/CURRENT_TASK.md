@@ -1,29 +1,31 @@
 # CURRENT TASK
 
-当前任务：**MomoPet Phase 0 — Engineering Baseline**
+当前状态：**暂无已授权执行任务**
 
-完整任务文档：
+上一阶段：**MomoPet Phase 0 — Engineering Baseline**
+状态：✅ **PASS / ARCHIVED**
 
-`tasks/PHASE0_ENGINEERING_BASELINE.md`
+归档任务文档：
 
-## 执行顺序
+`tasks/completed/PHASE0_ENGINEERING_BASELINE.md`
 
-1. 先读取仓库根目录 `AGENTS.md`
-2. 再完整读取 `tasks/PHASE0_ENGINEERING_BASELINE.md`
-3. 严格按文档范围执行
-4. 不扩展任务范围
-5. 完成后按任务文档要求输出执行报告
+执行报告：
 
-## 当前阶段目标
+`docs/PHASE0_EXECUTION_REPORT.md`
 
-建立一个可重复、可诊断、可自动测试的 Windows 工程基线：
+## 下一阶段
 
-```text
-clone
-→ restore
-→ build
-→ test
-→ artifact
-```
+下一阶段为：
 
-本阶段不新增产品功能，不进行大规模架构重构。
+**Phase 1 — Engineering Guardrails**
+
+目前仅进入规划准备状态，**尚未授权本地执行软件修改代码**。
+
+在规划角色发布正式 Phase 1 任务文档前，本地执行软件只允许：
+
+1. 同步最新 `main`
+2. 读取 `AGENTS.md`
+3. 读取本文件
+4. 等待新的明确任务
+
+不得自行开始 Phase 1，不得根据 ROADMAP 自行扩展或实施任何改动。
