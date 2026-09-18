@@ -1,4 +1,4 @@
-# common.ps1 — shared helpers for the MomoPet engineering pipeline.
+﻿# common.ps1 — shared helpers for the MomoPet engineering pipeline.
 # Not meant to run standalone; dot-source from scripts under scripts/.
 
 $ErrorActionPreference = 'Stop'

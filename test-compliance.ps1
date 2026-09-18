@@ -1,4 +1,4 @@
-param([string]$Exe)
+﻿param([string]$Exe)
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System.Web.Extensions
 $assembly=[Reflection.Assembly]::LoadFrom((Resolve-Path $Exe))

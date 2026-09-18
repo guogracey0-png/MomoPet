@@ -1,4 +1,4 @@
-# build.ps1 — compile MomoPet into artifacts\MomoPet.exe + build-info.json.
+﻿# build.ps1 — compile MomoPet into artifacts\MomoPet.exe + build-info.json.
 # Replaces the ad-hoc root build.ps1; that legacy file forwards here.
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')

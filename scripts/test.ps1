@@ -1,4 +1,4 @@
-# test.ps1 — unified regression gate: compliance + office-comfort.
+﻿# test.ps1 — unified regression gate: compliance + office-comfort.
 # Writes results to artifacts\test-results.txt and exits non-zero on any failure.
 param([string]$Exe)
 $ErrorActionPreference = 'Stop'

@@ -1,4 +1,4 @@
-# bootstrap.ps1 — environment discovery + skill restore for the MomoPet pipeline.
+﻿# bootstrap.ps1 — environment discovery + skill restore for the MomoPet pipeline.
 # Fails loudly (non-zero exit) whenever a required dependency is missing.
 param([switch]$Force)
 $ErrorActionPreference = 'Stop'

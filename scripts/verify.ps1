@@ -1,4 +1,4 @@
-# verify.ps1 — one-command pipeline: bootstrap -> build -> test.
+﻿# verify.ps1 — one-command pipeline: bootstrap -> build -> test.
 # Usage:  powershell -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 $ErrorActionPreference = 'Stop'
 

@@ -1,4 +1,4 @@
-# restore-skills.ps1 — restore .agents/skills/<skill> from skills-lock.json sources.
+﻿# restore-skills.ps1 — restore .agents/skills/<skill> from skills-lock.json sources.
 # Requirement: idempotent, reusable, and it must not be committed to Git.
 param([switch]$Force)
 $ErrorActionPreference = 'Stop'
