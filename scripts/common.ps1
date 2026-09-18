@@ -57,9 +57,11 @@ function Resolve-WindowsSdkWinmd {
         if (-not (Test-Path -LiteralPath $root)) { continue }
         foreach ($dir in Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue) {
             $winmd = Join-Path $dir.FullName 'Windows.winmd'
-            if (Test-Path -LiteralPath $winmd) {
-                $hits += [pscustomobject]@{ Version = [version]$dir.Name; Path = $winmd }
-            }
+            if (-not (Test-Path -LiteralPath $winmd)) { continue }
+            $ver = $null
+            # Skip non-version folders (e.g. "Facade") that carry no Windows.winmd version projection.
+            if (-not [version]::TryParse($dir.Name, [ref]$ver)) { continue }
+            $hits += [pscustomobject]@{ Version = $ver; Path = $winmd }
         }
     }
     if ($hits.Count -eq 0) {
