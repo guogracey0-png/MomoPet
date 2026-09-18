@@ -87,9 +87,22 @@ function Resolve-NodeRuntime {
         Log-Ok $script:BlockName "Node runtime: $nodePath (system PATH)"
     }
 
-    $versionText = & $nodePath --version 2>$null | Select-Object -First 1
-    if ($LASTEXITCODE -ne 0 -or -not $versionText) {
-        throw "Failed to read Node version from $nodePath"
+    # Read the version via System.Diagnostics.Process to avoid PS 5.1 native
+    # pipeline quirks (Select-Object -First 1 can terminate the child early).
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $nodePath
+    $psi.Arguments = '--version'
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $proc.Start() | Out-Null
+    $versionText = ($proc.StandardOutput.ReadToEnd()).Trim()
+    $proc.WaitForExit()
+    if ($proc.ExitCode -ne 0 -or -not $versionText) {
+        throw "Failed to read Node version from $nodePath (exit $($proc.ExitCode))"
     }
     $ver = [version]($versionText.TrimStart('v'))
     if ($ver -lt $script:MinNodeVersion) {
