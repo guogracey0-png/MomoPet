@@ -3,17 +3,12 @@ $ErrorActionPreference = 'Stop'
 if (-not $Exe) { throw 'Exe parameter is required' }
 $assembly = [Reflection.Assembly]::LoadFrom((Resolve-Path $Exe))
 
+# 校验类型存在（AppPaths 为 internal，仅做存在性检查；AppLog 为 public，可直接静态调用）。
 $a = $assembly.GetType('MomoPetApp.AppLog')
 if (-not $a) { throw 'AppLog type not found in assembly' }
 $p = $assembly.GetType('MomoPetApp.AppPaths')
 if (-not $p) { throw 'AppPaths type not found in assembly' }
 
-$flags = [Reflection.BindingFlags]'Public,Static'
-function AppLogCall([string]$method, [Type[]]$types, [object[]]$argsList) {
-    $mi = $a.GetMethod($method, $flags, $null, $types, $null)
-    if (-not $mi) { throw "AppLog.$method not found" }
-    return $mi.Invoke($null, $argsList)
-}
 function Assert($ok, $message) {
     if (-not $ok) { throw $message }
     Write-Output "PASS: $message"
@@ -25,10 +20,11 @@ $tmp = Join-Path $env:TEMP ('momopet-guardrail-' + [Guid]::NewGuid().ToString('N
 try {
     $seed = 'MOMOPET_TEST_SECRET_' + [Guid]::NewGuid().ToString('N')
 
-    AppLogCall 'RegisterSensitive' @([string], [string]) @($seed, 'test-secret')
-    AppLogCall 'Info' @([string], [string]) @('guardrail', 'bootup marker 2026')
-    AppLogCall 'Error' @([string], [System.Exception]) @('guardrail', [System.Exception]::new('guardrail boom'))
-    AppLogCall 'Warn' @([string], [string]) @('guardrail', 'warning sample')
+    # 直接静态调用（避免 GetMethod+ArugmentList 在 PowerShell 5.1 下参数绑定不稳定）。
+    [MomoPetApp.AppLog]::RegisterSensitive($seed, 'test-secret')
+    [MomoPetApp.AppLog]::Info('guardrail', 'bootup marker 2026')
+    [MomoPetApp.AppLog]::Error('guardrail', [System.Exception]::new('guardrail boom'))
+    [MomoPetApp.AppLog]::Warn('guardrail', 'warning sample')
 
     $logsDir = Join-Path $tmp 'logs'
     Assert (Test-Path $logsDir) 'AppLog created a logs directory'
@@ -41,19 +37,19 @@ try {
     Assert ($content.Contains('guardrail boom')) 'Error exception message written'
     Assert ($content.Contains('warning sample')) 'Warn message written'
 
-    AppLogCall 'Info' @([string], [string]) @('guardrail', 'about to leak: ' + $seed)
+    [MomoPetApp.AppLog]::Info('guardrail', 'about to leak: ' + $seed)
     $content2 = [IO.File]::ReadAllText($logFile.FullName, [Text.Encoding]::UTF8)
     Assert (-not $content2.Contains($seed)) 'Secret sample NOT written verbatim'
     Assert ($content2.Contains('[REDACTED:test-secret]')) 'Registered sensitive value was masked'
 
-    $scrubbed = AppLogCall 'Scrub' @([string]) @('prefix ' + $seed + ' suffix')
+    $scrubbed = [MomoPetApp.AppLog]::Scrub('prefix ' + $seed + ' suffix')
     Assert ($scrubbed.Contains('[REDACTED:test-secret]')) 'Scrub API masks sensitive tokens'
     Assert (-not $scrubbed.Contains($seed)) 'Scrub API removes the raw sensitive token'
 
     # Logging into an unwritable directory must not throw (P1-01: log failure never crashes).
     [Environment]::SetEnvironmentVariable('MOMOPET_DATA_DIR', (Join-Path $env:SystemRoot ('MomoPet_NoWrite_' + [Guid]::NewGuid().ToString('N'))))
     $threw = $false
-    try { AppLogCall 'Info' @([string], [string]) @('guardrail', 'should-not-crash') }
+    try { [MomoPetApp.AppLog]::Info('guardrail', 'should-not-crash') }
     catch { $threw = $true }
     Assert (-not $threw) 'AppLog swallows write failures (no crash)'
 
