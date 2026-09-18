@@ -8,44 +8,53 @@
 
 ## Phase 0 — Engineering Baseline
 
-目标：
+当前状态：PASS / ARCHIVED
+
+成果：
 - 可重复依赖恢复
 - 可重复构建
 - 自动回归测试
 - 构建产物可追踪
-- CI 可验证
+- CI 全链路验证
 - 失败可诊断
 
-当前状态：✅ **PASS / ARCHIVED**
-
-归档任务文档：
-`tasks/completed/PHASE0_ENGINEERING_BASELINE.md`
+归档任务：
+tasks/completed/PHASE0_ENGINEERING_BASELINE.md
 
 执行报告：
-`docs/PHASE0_EXECUTION_REPORT.md`
+docs/PHASE0_EXECUTION_REPORT.md
 
 最终 CI 基线：
-`dddc83b` / run `35320912068` / success
+dddc83b / run 35320912068 / success
 
 ## Phase 1 — Engineering Guardrails
 
-当前状态：**NEXT / PLANNING**
+当前状态：CURRENT / AUTHORIZED
 
-> 尚未发布正式执行任务；本地执行软件不得根据本路线图自行开工。
+当前任务：
+tasks/PHASE1_ENGINEERING_GUARDRAILS.md
 
-计划目标：
+目标：
 - 统一日志体系
-- 统一配置管理
-- Provider 配置边界
-- CI/PR 质量门禁
-- 测试覆盖扩充
-- 发布与版本策略
-- 错误与崩溃诊断标准化
+- 顶层错误与崩溃诊断
+- 配置 / Secret / 状态边界
+- 路径基础设施
+- CI / PR 质量门禁
+- 回归测试护栏
+- 版本与诊断元数据
+- 最小诊断包
+- 供应链 / Release 后续专项登记
+
+明确不包含：
+- ImageEditor 重构
+- PetController 拆分
+- Messenger / Compliance 架构拆分
+- UI 重做
+- .NET 8 / Electron 迁移
 
 ## Phase 2 — Architecture Decomposition
 
 计划优先顺序：
-
 1. ImageEditor
 2. Messenger
 3. Compliance
@@ -84,9 +93,24 @@
 - 新 AI 模型能力
 - UI/交互升级
 
+## 后续专项
+
+### Skill Supply Chain
+- computedHash 正式规范
+- deterministic directory hash
+- sourceRef / commit pinning
+- lock migration
+
+### Release / Updater
+- 版本策略
+- Release artifacts
+- 更新与回滚
+- 运行中 EXE 替换
+- portable / installer 策略
+
 ## 当前禁止的大动作
 
-在 Phase 0 / Phase 1 完成前，不建议：
+在 Phase 1 完成前，不建议：
 - 全面重写
 - Electron 迁移
 - .NET 8 全量迁移
@@ -96,22 +120,12 @@
 
 ## 协作模式
 
-```text
 用户提出需求
-↓
-规划角色评估与拆任务
-↓
-更新 tasks/CURRENT_TASK.md
-↓
-本地执行软件 git pull
-↓
-读取 AGENTS.md + CURRENT_TASK
-↓
-执行 / build / test
-↓
-提交结果与 diff
-↓
-规划角色 Review / 验收
-↓
-进入下一任务
-```
+→ 规划角色评估与拆任务
+→ 更新 tasks/CURRENT_TASK.md
+→ 本地执行软件 git pull
+→ 读取 AGENTS.md + CURRENT_TASK
+→ 执行 / build / test / CI
+→ 提交执行报告与 diff
+→ 规划角色 Review / 验收
+→ 进入下一任务
