@@ -56,20 +56,19 @@
 ## 4. 待判断项（交由规划角色 / 其他软件判定）
 
 1. **SDK 阻塞处理** ✅ **已交由 CI 解决**：由 GitHub Actions（windows-latest 自带 SDK）完成构建与测试，CI 已全绿。本机仍可在安装 SDK 后跑 `.\scripts\verify.ps1` 验证（需管理员）。
-2. **P0-04 `computedHash` 校验算法** ✅ **已确认（规划角色批准）**：规范为 **SHA-256 over `SKILL.md`** —— 对技能目录下 `SKILL.md` 文件内容字节计算 SHA-256（小写 hex）。已批准 `restore-skills.ps1` 据此启用**强制校验**：恢复/复用前比对实际 SHA-256 与 `skills-lock.json` 锁定值，不匹配即视为恢复失败（exit 非零）。
-   > ⚠️ **启用前的关键阻塞**：`skills-lock.json` 中 4 个既有 `computedHash` 与当前从源克隆的 SKILL.md **SHA-256 全部不一致**（raw 与 CRLF→LF 规范化两种口径均不匹配，且与技能目录内任何文件均不匹配）。因此**当前不能直接开启该强制校验**，否则 4 个技能全部恢复失败。需先回填 `skills-lock.json` 为当前源的准确 SKILL.md SHA-256（或改定规范化口径），再由执行侧实现并验证。
+2. **P0-04 `computedHash` 校验算法** ⏭️ **转入后续工程任务，不阻塞 Phase 0**：Phase 0 已按原任务要求做到“算法无法确认时不伪造校验，并明确 WARN + TODO”。规划角色**未批准**“仅对 `SKILL.md` 做 SHA-256”作为最终规范。后续应单独设计 Skill 供应链完整性方案，优先评估**目录级确定性 hash + 固定 `sourceRef`（commit SHA）**，再决定是否启用强制校验。现有 4 个 `computedHash` 与当前源内容不一致的问题作为后续任务输入，不在 Phase 0 内回填或强制开启。
 3. **`wind-alice`（gitee 源）在 CI 可达性** ✅ **已验证**：CI 中 `wind-alice` 恢复成功，网络可达性无阻塞。
-4. **`artifacts` 覆盖策略** ✅ **已确认（规划角色批准）**：采用 **时间戳备份，保留最近 N 份**。构建发布新的 `artifacts\MomoPet.exe` 前，将现有产物重命名为带时间戳的备份文件，保留最近 N 份，超出数量即清理；以 N=5 为默认值（可配置）。预计在 `scripts/build.ps1` 的 publish 步骤实现。
+4. **`artifacts` 覆盖策略** ✅ **Phase 0 维持当前方案**：`artifacts\MomoPet.exe` 继续代表“最新一次成功构建的标准产物”，当前原子覆盖策略无需在 Phase 0 修改。运行中程序的版本备份、时间戳副本、回滚和更新机制属于后续 **Release / Updater** 设计，不在 Phase 0 实现。
 5. **CI 首次运行结果** ✅ **已确认**：commit `dddc83b` 对应 run 35320912068 conclusion=success，构建与测试均成功，产物已上传。
 
 ## 5. 验收结论
 - Build：统一流程 / 无固定 SDK 小版本 / Node 明确 / `.agents` 自动恢复 ✅（本地校验 + CI 实测）
 - 「成功生成 EXE / test / artifacts」✅ **CI 实测通过**：`artifacts/MomoPet.exe`、`build-info.json`、`test-results.txt` 已由 windows-latest 生成；Compliance 7/7、Office Comfort 7/7 全过，`testsPassed=true`
 - 任何测试失败不得标记 Baseline Success —— 已遵守
-- 本文件结论仍需规划角色的最终 Code Review / 验收盖章确认
+- ✅ **规划角色最终验收：Phase 0 PASS，可归档。** CI 已完成 bootstrap → build → test → upload artifact 全链路验证；剩余 `computedHash` 供应链强化与生产更新/回滚策略转入后续阶段，不阻塞 Phase 0。
 
 ## 6. 风险项
-- ⚠️ **本报告第 4 节第 2、4 项为"已确认的判定记录"，尚未在代码实现**：`computedHash`（SHA-256 over SKILL.md）的强制校验仍在 `restore-skills.ps1` 中为 `[WARN]+TODO`；`artifacts` 时间戳备份（保留 N 份）尚未在 `scripts/build.ps1` 实现。两者均待执行侧收到实现指令后落地——请勿按"已实现"验收。
-- ⚠️ 现有 4 个锁定 `computedHash` 与当前源 SKILL.md 不一致，**实现强制校验前必须先回填 `skills-lock.json`**（否则恢复必失败）。
+- `computedHash` 当前仍为 `[WARN]+TODO`，这是 Phase 0 允许的已知后续项；后续需先定义正式供应链校验规范，再决定锁文件迁移方式。
+- 生产运行中的版本备份 / 回滚 / Updater 机制尚未设计，后续单独进入发布工程任务；不影响当前构建产物基线。
 - 未提交 `.agents` 内容本身（已 gitignore），只提交恢复逻辑；SKILL 文件不进入仓库
 - 未提交任何 Key / Token / 用户数据
