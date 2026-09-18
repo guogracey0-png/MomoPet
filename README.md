@@ -31,11 +31,21 @@ MomoPet 是一个原生 Windows 桌面提醒与 AI 办公桌宠。小猫负责�
 - .NET Framework 4.x
 - Windows 10/11 SDK（用于本地 OCR）
 
-在 Windows PowerShell 中运行：
+在 Windows PowerShell 中一键执行（推荐）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
+
+该命令依次执行：环境检查（bootstrap）、Skill 依赖恢复、构建、回归测试，产物输出到 `artifacts\`。也可分步执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1   # 环境检查 + Skill 恢复
+powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1       # 构建
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1        # 回归测试
+```
+
+完整的构建流程、产物结构与常见错误说明见 [docs/ENGINEERING_BASELINE.md](docs/ENGINEERING_BASELINE.md)。构建脚本会动态发现 Windows SDK 与 Node 运行时，不硬编码 SDK 小版本。
 
 为避免覆盖正在运行的程序，构建脚本会生成带时间戳的 `MomoPet.next-*.exe`。生成文件不会提交到 Git；需要分发时请把它作为 GitHub Release 附件发布。
 
@@ -47,8 +57,10 @@ assets/normalized/           当前正式使用的桌宠动作与皮肤资源
 wind_bridge/                 AI 与数据服务桥接脚本
 cloud/cafe-server-patch/     博知汇阿里云来信服务增量补丁
 tools/                       皮肤资源检查和维护工具
+scripts/                     工程基线脚本（bootstrap / build / test / verify）
+artifacts/                   构建产物（MomoPet.exe / build-info.json / test-results.txt）
 compliance-rules.txt         本地合规规则
-build.ps1                    单文件构建入口
+build.ps1                    单文件构建入口（转发到 scripts\build.ps1）
 ```
 
 ## 隐私与密钥

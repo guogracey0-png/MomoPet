@@ -1,0 +1,38 @@
+name: windows-build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap (environment + skill restore)
+        shell: powershell
+        run: |
+          .\scripts\bootstrap.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build
+        shell: powershell
+        run: |
+          .\scripts\build.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test (compliance + office comfort)
+        shell: powershell
+        run: |
+          .\scripts\test.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: momopet-artifacts
+          path: artifacts/
+          if-no-files-found: error

@@ -19,6 +19,7 @@ obj/
 release/
 test-output/
 finish-image-update.ps1
+artifacts/
 
 # Local distribution folders
 本地部署/
