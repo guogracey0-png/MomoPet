@@ -24,7 +24,7 @@ jobs:
           .\scripts\build.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Test (compliance + office comfort)
+      - name: Test (compliance + office comfort + engineering guardrails)
         shell: powershell
         run: |
           .\scripts\test.ps1

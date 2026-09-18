@@ -11,7 +11,7 @@ bootstrap   （环境检查 + Skill 依赖恢复）
   ↓
 build       （编译 OCR 助手 + EmbeddedRuntime + MomoPet → artifacts\MomoPet.exe）
   ↓
-test        （Compliance + Office Comfort 回归测试 → artifacts\test-results.txt）
+test        （Compliance + Office Comfort + Engineering Guardrails → artifacts\test-results.txt）
   ↓
 artifacts\  （MomoPet.exe / build-info.json / test-results.txt）
 ```
@@ -73,8 +73,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1
 
 - `test-compliance.ps1` — 合规规则回归
 - `test-office-comfort.ps1` — Office 舒适度 / 状态保存回归
+- `test-engineering-guardrails.ps1` — 工程护栏：统一日志可落盘、敏感样例被遮罩、日志失败不崩溃
 
-任一测试失败时脚本返回非 0 exit code，并写入 `artifacts\test-results.txt`，此时不得标记为构建成功。
+任一测试失败时脚本返回非 0 exit code，并写入 `artifacts\test-results.txt`（每项含测试名、PASS/FAIL、exit code 与总体结论），此时不得标记为构建成功。
 
 ## 运行方法
 
@@ -98,6 +99,14 @@ artifacts\
 ```
 
 `artifacts\MomoPet.exe` 在每次成功构建后被原子替换，保证始终指向当前版本。
+
+## 日志与诊断
+
+- 统一应用日志：`%LOCALAPPDATA%\MomoPet\logs\momo-YYYYMMDD.log`（`src/AppLog.cs`），每条含 timestamp/level/component/message/异常；文件头含 version / commit / buildTime / os / runtime（`src/AppDiagnostics.cs`，构建时嵌入 `build-meta.txt`）。
+- 路径边界：`src/AppPaths.cs`（数据根沿用 `MomoPaths.DataDir()`），禁止新代码散落 `%LOCALAPPDATA%\MomoPet` 字面量。
+- 顶层异常（Dispatcher / AppDomain / TaskScheduler / 启动）已接入统一日志（`src/MomoPet.cs` Program.Main）。
+- 诊断包：`scripts\collect-diagnostics.ps1` 输出到 `artifacts\diagnostics\<stamp>\`（环境/版本/最近日志/文件存在性），生成前自动过滤密钥等敏感信息。
+- Secret 边界与盘点见 `docs/CONFIGURATION_AND_SECRETS.md`；CI 门禁规则见 `docs/CI_POLICY.md`。
 
 ## 脚本分层
 

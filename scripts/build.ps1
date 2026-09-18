@@ -97,7 +97,7 @@ try {
     ) | Where-Object { $_ }
 
     $sourceFiles = @(
-        'Ui.cs','TextSelection.cs','OfficeComfort.cs','MomoPet.cs','SkinWardrobe.cs','StashWorkspace.cs',
+        'AppPaths.cs','AppLog.cs','AppDiagnostics.cs','Ui.cs','TextSelection.cs','OfficeComfort.cs','MomoPet.cs','SkinWardrobe.cs','StashWorkspace.cs',
         'PetExperience.cs','AiSearch.cs','ImageEditor.cs','AiPocket.cs','AiCommunity.cs','Messenger.cs',
         'MomoAccount.cs','Launcher.cs','ComplianceUpgrade.cs','OcrContracts.cs','EmbeddedRuntime.cs',
         'HealthCompanion.cs','CommunityCloud.cs'
@@ -118,6 +118,19 @@ try {
         ('/resource:' + $nodeGzip + ',node.exe.gz'),
         ('/resource:' + $skillsArchive + ',agents-skills.zip')
     )
+
+    # P1-07 构建元数据（version/commit/buildTime）嵌入 EXE，日志头可据此定位构建来源。
+    $metaInfo = Get-CommitInfo
+    $buildMetaPath = Join-Path $payloadDir 'build-meta.txt'
+    $buildMetaLines = @(
+        'commit=' + $metaInfo.Commit,
+        'branch=' + $metaInfo.Branch,
+        'buildTime=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),
+        'node=' + $node.Version,
+        'windowsSdk=' + $sdk.Version.ToString()
+    )
+    [System.IO.File]::WriteAllLines($buildMetaPath, $buildMetaLines, (New-Object System.Text.UTF8Encoding($false)))
+    $resources += ('/resource:' + $buildMetaPath + ',build-meta.txt')
 
     $arguments = @('/nologo', '/target:winexe', ('/out:' + $tmpExe)) + ($references | ForEach-Object { '/reference:' + $_ }) + $resources + $sourceFiles
     & $compiler @arguments 2>&1 | ForEach-Object { Write-Host "  [csc] $_" }

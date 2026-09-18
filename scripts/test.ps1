@@ -33,19 +33,21 @@ function Run-Test {
     $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -Exe $exeFull 2>&1
     $code = $LASTEXITCODE
     foreach ($line in $out) { $s = "$line"; Write-Host "  $s"; [void]$log.AppendLine($s) }
+    # P1-06: every result row records name, PASS/FAIL and the child exit code.
     if ($code -ne 0) {
         $script:failures++
         Log-Fail $Label "exit code $code"
-        [void]$log.AppendLine("RESULT: FAIL (exit $code)")
+        [void]$log.AppendLine('RESULT: ' + $Label + ' = FAIL (exit ' + $code + ')')
     } else {
-        Log-Ok $Label 'passed'
-        [void]$log.AppendLine('RESULT: PASS')
+        Log-Ok $Label "passed (exit $code)"
+        [void]$log.AppendLine('RESULT: ' + $Label + ' = PASS (exit ' + $code + ')')
     }
     [void]$log.AppendLine('')
 }
 
 Run-Test (Join-Path $root 'test-compliance.ps1') 'Compliance regression tests'
 Run-Test (Join-Path $root 'test-office-comfort.ps1') 'Office comfort regression tests'
+Run-Test (Join-Path $root 'test-engineering-guardrails.ps1') 'Engineering guardrail tests'
 
 [void]$log.AppendLine(('OVERALL: ' + $(if ($failures -eq 0) { 'PASS' } else { "FAIL ($failures)" })))
 $log.ToString() | Set-Content -LiteralPath $resultsPath -Encoding UTF8

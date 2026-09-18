@@ -137,6 +137,8 @@ namespace MomoPetApp
         static void MomoLog(string scope, Exception error)
         {
             if(error==null)return;
+            // 统一日志（P1-01/P1-02）。AppLog 自带失败隔离与敏感信息遮罩，不会导致进程崩溃。
+            AppLog.Error(scope, error);
             try{string dir=MomoPaths.DataDir();Directory.CreateDirectory(dir);File.AppendAllText(Path.Combine(dir,"ui-errors.log"),DateTime.Now.ToString("o")+"\t["+scope+"]\t"+error+Environment.NewLine,Encoding.UTF8);}catch{}
         }
 

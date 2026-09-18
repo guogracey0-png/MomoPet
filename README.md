@@ -47,7 +47,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1        # 回归测�
 
 完整的构建流程、产物结构与常见错误说明见 [docs/ENGINEERING_BASELINE.md](docs/ENGINEERING_BASELINE.md)。构建脚本会动态发现 Windows SDK 与 Node 运行时，不硬编码 SDK 小版本。
 
-为避免覆盖正在运行的程序，构建脚本会生成带时间戳的 `MomoPet.next-*.exe`。生成文件不会提交到 Git；需要分发时请把它作为 GitHub Release 附件发布。
+每次成功构建会把最新产物发布为 `artifacts\MomoPet.exe`（原子替换；时间戳备份/分发改版归入后续 Release 工程待办，见 `docs/ENGINEERING_BACKLOG.md`）。生成文件不会提交到 Git；需要分发时请把它作为 GitHub Release 附件发布。
+
+应用运行日志与诊断：统一日志写入 `%LOCALAPPDATA%\MomoPet\logs\momo-YYYYMMDD.log`（日志头含版本/commit/构建时间/系统信息，定位问题用）。可运行 `scripts\collect-diagnostics.ps1` 生成诊断包（自动过滤密钥等敏感信息）。详见 `docs/ENGINEERING_BASELINE.md` 与 `docs/CONFIGURATION_AND_SECRETS.md`。
 
 ## 目录
 
