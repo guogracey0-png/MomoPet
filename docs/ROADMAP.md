@@ -16,12 +16,22 @@
 - CI 可验证
 - 失败可诊断
 
-当前状态：**CURRENT**
+当前状态：✅ **PASS / ARCHIVED**
 
-任务文档：
-`tasks/PHASE0_ENGINEERING_BASELINE.md`
+归档任务文档：
+`tasks/completed/PHASE0_ENGINEERING_BASELINE.md`
+
+执行报告：
+`docs/PHASE0_EXECUTION_REPORT.md`
+
+最终 CI 基线：
+`dddc83b` / run `35320912068` / success
 
 ## Phase 1 — Engineering Guardrails
+
+当前状态：**NEXT / PLANNING**
+
+> 尚未发布正式执行任务；本地执行软件不得根据本路线图自行开工。
 
 计划目标：
 - 统一日志体系
