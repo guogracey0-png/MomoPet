@@ -48,6 +48,7 @@ function Run-Test {
 Run-Test (Join-Path $root 'test-compliance.ps1') 'Compliance regression tests'
 Run-Test (Join-Path $root 'test-office-comfort.ps1') 'Office comfort regression tests'
 Run-Test (Join-Path $root 'test-engineering-guardrails.ps1') 'Engineering guardrail tests'
+Run-Test (Join-Path $root 'test-image-editor-boundary.ps1') 'ImageEditor boundary structure tests'
 
 [void]$log.AppendLine(('OVERALL: ' + $(if ($failures -eq 0) { 'PASS' } else { "FAIL ($failures)" })))
 $log.ToString() | Set-Content -LiteralPath $resultsPath -Encoding UTF8
