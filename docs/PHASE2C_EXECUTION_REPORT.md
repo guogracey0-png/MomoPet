@@ -1,6 +1,6 @@
 # MomoPet Phase 2C 执行报告 — Compliance Boundary
 
-状态：✅ 执行完成 / 待规划角色验收
+状态：✅ PASS / ARCHIVED（规划角色已完成最终验收）
 执行日期：2026-09-21
 基线：Phase 2B PASS / ARCHIVED（CI `35578962686` / `a708d96`）
 目标仓库：`guogracey0-png/MomoPet`，分支 `main`
@@ -159,3 +159,33 @@ Phase 2C 在 **Move-first / Refactor-later** 原则下，将单一巨型 `src/Co
 - 任务文档：`tasks/PHASE2C_COMPLIANCE_BOUNDARY.md`
 - 拆分产物（git-ignored）：`artifacts/split_compliance.ps1`、`artifacts/verify_compliance_conservation.ps1`
 - 边界测试：`test-compliance-boundary.ps1`（已随 `7bccac5` 提交）
+
+---
+
+## 13. 规划角色最终验收
+
+最终判定：✅ **Phase 2C PASS，可归档。**
+
+真实 CI 校准：
+- commit：`7bccac5fd620354cf6ea830deae2d5bb0b19b014`
+- GitHub Actions run：`35583063767`
+- attempt：1
+- conclusion：`success`
+- Bootstrap / Build / Test / Upload artifacts：全部 success
+- CI 日志确认实际执行并通过：
+  - Compliance regression
+  - Office comfort regression
+  - Engineering guardrail
+  - ImageEditor boundary
+  - Messenger boundary
+  - Compliance boundary
+- `momopet-artifacts`：已真实生成，未过期
+
+规划结论：
+1. Compliance 的 Move-first 拆分符合任务边界。
+2. Rule / Prompt / regex / Audit / Hash / HTML / UI 等关键兼容面未主动改变。
+3. `ComplianceRulesService`、`AiComplianceReviewer`、`AuditStore`、`ComplianceReportExporter` 均只作为未来候选，不在本阶段继续实现。
+4. 本地轻量编译中的 `StashItem` 缺失引用来自未包含完整依赖源文件，不构成正式 Build 失败；GitHub Actions 完整 Build 已通过。
+5. 下一阶段进入 **Phase 2D — PetController Boundary**，仅拆 `src/MomoPet.cs` 中剩余主控制器职责，不重复拆已独立模块。
+
+Phase 2C 不再追加新实现。
