@@ -1,6 +1,6 @@
 # MomoPet Phase 2B 执行报告 — Messenger Boundary
 
-状态：EXECUTED / 等待规划角色验收
+状态：✅ PASS / ARCHIVED（规划角色已完成最终验收）
 执行日期：2026-09-21
 基线：Phase 2A PASS/ARCHIVED（CI `35575677386` / `dbb2cf6`）
 目标仓库：`guogracey0-png/MomoPet`，分支 `main`
@@ -47,29 +47,33 @@ Phase 2B 在 **Move-first / Refactor-later** 原则下，将单一巨型 `src/Me
 
 ## 4. git diff --stat
 
-对 `HEAD~1`（`620fc82`）到 `HEAD`（`a708d96`）：
+规划角色已通过 GitHub commit API 对提交 `a708d96eb806a9f27b60e325c6a174707308c861` 重新核对。
 
-```
- scripts/build.ps1 |   3 +-
- scripts/test.ps1  |   1 +
- src/Messenger.cs  | 485 +-----------------------------------------------------
- 3 files changed, 5 insertions(+), 484 deletions(-)
-```
+真实提交统计：
 
-新增未跟踪文件（同提交并入）：
-
-```
- src/Messenger.Models.cs        (new, 85 lines)
- src/Messenger.State.cs         (new, 120 lines)
- src/Messenger.Api.cs           (new, 42 lines)
- src/Messenger.Attachments.cs   (new, 203 lines)
- src/Messenger.Conversations.cs (new, 52 lines)
- src/Messenger.Groups.cs        (new, 39 lines)
- src/Messenger.Courier.cs       (new, 156 lines)
- test-messenger-boundary.ps1    (new, structure guardrail test)
+```text
+11 files changed
+791 additions
+484 deletions
 ```
 
-`src/Messenger.cs` 差值即「成员迁出」（删除移动的成员，保留 UI 部分）。`src/Messenger.cs` numstat：`2 483`。
+提交实际包含：
+
+```text
+scripts/build.ps1                     modified  +2  -1
+scripts/test.ps1                      modified  +1
+src/Messenger.Api.cs                 added     +42
+src/Messenger.Attachments.cs         added     +203
+src/Messenger.Conversations.cs       added     +52
+src/Messenger.Courier.cs             added     +156
+src/Messenger.Groups.cs              added     +39
+src/Messenger.Models.cs              added     +85
+src/Messenger.State.cs               added     +120
+src/Messenger.cs                     modified  +2  -483
+test-messenger-boundary.ps1          added     +89
+```
+
+原报告将新增文件描述为“新增未跟踪文件（同提交并入）”，该表述不准确；上述新增文件均已正式包含在 `a708d96` 提交中。代码提交本身没有问题，仅修正报告记录。
 
 ## 5. 所有非纯移动修改
 
@@ -149,3 +153,35 @@ Phase 2B 在 **Move-first / Refactor-later** 原则下，将单一巨型 `src/Me
 - 任务文档：`tasks/PHASE2B_MESSENGER_BOUNDARY.md`
 - 拆分产物（git-ignored）：`artifacts/split_messenger.ps1`、`artifacts/verify_messenger_conservation.ps1`、`artifacts/devcheck_messenger.ps1`
 - CI 现场：`artifacts/diagnostics/phase2b-ci/`
+
+---
+
+## 11. 规划角色最终验收
+
+最终判定：✅ **Phase 2B PASS，可归档。**
+
+真实 CI 校准：
+- commit：`a708d96eb806a9f27b60e325c6a174707308c861`
+- GitHub Actions run：`35578962686`
+- attempt 1：failure（Bootstrap / skill restore 环境性失败）
+- attempt 2：success（同一 commit，无代码变化）
+- Build / Test / Upload artifacts：全部 success
+- CI 日志确认实际执行并通过：
+  - Compliance regression tests
+  - Office comfort regression tests
+  - Engineering guardrail tests
+  - ImageEditor boundary structure tests
+  - Messenger boundary structure tests
+
+Artifact：
+- `momopet-artifacts` 已真实生成
+- 当前未过期
+
+规划结论：
+1. Messenger 的 Move-first 拆分符合任务边界。
+2. 本轮未改变 API、Token、DPAPI、schema、附件、轮询、回执、UI 或动画行为。
+3. `MomoMessengerService`、Attachment/Courier Service 等只作为未来候选，不在本阶段继续实现。
+4. skill restore 对 Git stderr / `$ErrorActionPreference='Stop'` 的脆弱性登记为 Engineering Backlog，不阻塞 Phase 2B。
+5. 下一阶段进入 **Phase 2C — Compliance Boundary**，继续采用“先拆边界、规则与判定逻辑完全不变”。
+
+Phase 2B 不再追加新实现。
