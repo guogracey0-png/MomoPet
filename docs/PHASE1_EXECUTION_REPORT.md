@@ -1,6 +1,6 @@
 # MomoPet Phase 1  Engineering Guardrails  执行报告
 
-状态：EXECUTION DONE / 等待规划角色验收（不自行宣布归档）
+状态：✅ PASS / ARCHIVED（规划角色已完成最终验收）
 
 - 目标仓库：`guogracey0-png/MomoPet`
 - 分支 / 基线：`main` @ `d46ca54`（进入本阶段）→ `d789c60`（本阶段最终提交）
@@ -186,3 +186,27 @@ artifact 仅在 Build+Test 全部成功后上传（`if-no-files-found: error`+�
 ---
 
 > 执行流程符合 AGENTS.md → CURRENT_TASK.md → PHASE1_ENGINEERING_GUARDRAILS.md；未进入 Phase 2，未扩大范围。所有改动均已推送到 `main`，CI 以真实 run `35326969067`（conclusion=success）验证。
+
+---
+
+## 14. 规划角色最终验收与判定
+
+最终验收：✅ **Phase 1 PASS，可归档。**
+
+真实 CI 校准：
+- commit：`d789c6023e4e14a7a6c12c34d29f5b34e92e4cdc`
+- GitHub Actions run：`35326969067`
+- conclusion：`success`
+- Checkout / Bootstrap / Build / Test / Upload artifacts：全部 success
+- `momopet-artifacts`：已成功生成
+
+对第 13 节待判定事项的正式结论：
+
+1. **skills-lock.json / computedHash**：继续进入 Engineering Backlog，不在 Phase 1 追做；不批准简单 `SHA-256(SKILL.md)` 直接成为最终规范。后续专项优先评估 deterministic directory hash + 固定 `sourceRef` / commit SHA。
+2. **时间戳备份 / 分发策略**：进入 Release / Updater 专项；当前继续保持 `artifacts\\MomoPet.exe` 代表最新成功构建标准产物。
+3. **main 分支保护**：建议后续启用 `windows-build / build-test` required check，但本次验收不修改仓库保护规则。
+4. **本机 Windows SDK**：不阻塞；正式验收默认依赖 GitHub Actions。需要离线本机构建时再人工安装 SDK。
+5. **windows-build**：正式确认为远端 CI 质量门禁；本地 `scripts/verify.ps1` 继续作为本地验证入口，两者并存。
+6. **Phase 1**：批准归档，下一阶段进入 Phase 2A — ImageEditor Boundary。
+
+Phase 1 不再追加新实现。后续新增工程能力必须进入新的任务文件。
