@@ -1,6 +1,6 @@
 # MomoPet Phase 2A：ImageEditor Boundary 执行报告
 
-状态：✅ 执行完成 / ⏳ 待规划角色验收（未归档，不进入 Phase 2B）
+状态：✅ PASS / ARCHIVED（规划角色已完成最终验收）
 
 - 目标仓库：`guogracey0-png/MomoPet`
 - 分支 / 基线：`main` @ `ae43756`（进入本阶段）→ `dbb2cf6`（本阶段最终提交）
@@ -204,3 +204,29 @@
 - [x] 真实 GitHub Actions 全绿（run 35575677386）
 - [x] 生成并提交本报告
 - [ ] 规划角色验收（**待完成；验收前不进入 Phase 2B，不归档**）
+
+---
+
+## 13. 规划角色最终验收
+
+最终判定：✅ **Phase 2A PASS，可归档。**
+
+真实 CI 校准：
+- commit：`dbb2cf6dbf2bf435b4bb307039e1e14df254d671`
+- GitHub Actions run：`35575677386`
+- conclusion：`success`
+- Bootstrap / Build / Test / Upload artifacts：全部 success
+- CI 日志确认实际执行并通过：
+  - Compliance regression tests
+  - Office comfort regression tests
+  - Engineering guardrail tests
+  - ImageEditor boundary structure tests
+
+规划结论：
+1. 本轮 Move-first 拆分符合任务边界，无需继续在 ImageEditor 上追加 Service 抽取。
+2. `ImageAiConfigStore`、`ImageOcrService`、`PrecisionPipelineService`、`ImageCodecService`、`ImageEditorState`、`ImageTaskRunner` 均只作为未来候选，不在本阶段实施。
+3. GitHub Actions Node 运行时弃用告警记录为工程 backlog，不阻塞归档。
+4. 本机 Windows SDK 缺失继续不阻塞；正式验收以 GitHub Actions 为准。
+5. 下一阶段进入 **Phase 2B — Messenger Boundary**，继续采用“先拆边界、不改协议/行为”的方式。
+
+Phase 2A 不再追加新实现。
