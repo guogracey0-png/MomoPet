@@ -29,10 +29,16 @@ dddc83b / run 35320912068 / success
 
 ## Phase 1 — Engineering Guardrails
 
-当前状态：CURRENT / AUTHORIZED
+当前状态：✅ PASS / ARCHIVED
 
-当前任务：
-tasks/PHASE1_ENGINEERING_GUARDRAILS.md
+归档任务：
+tasks/completed/PHASE1_ENGINEERING_GUARDRAILS.md
+
+执行报告：
+docs/PHASE1_EXECUTION_REPORT.md
+
+最终 CI：
+d789c60 / run 35326969067 / success
 
 目标：
 - 统一日志体系
@@ -54,7 +60,28 @@ tasks/PHASE1_ENGINEERING_GUARDRAILS.md
 
 ## Phase 2 — Architecture Decomposition
 
-计划优先顺序：
+当前状态：🟡 IN PROGRESS
+
+### Phase 2A — ImageEditor Boundary
+
+状态：CURRENT / AUTHORIZED
+
+当前任务：
+tasks/PHASE2A_IMAGE_EDITOR_BOUNDARY.md
+
+策略：
+先按职责拆 partial 文件，建立稳定边界；本轮不做 Service / MVVM 大改。
+
+### Phase 2B — Messenger Boundary
+状态：PLANNED / NOT AUTHORIZED
+
+### Phase 2C — Compliance Boundary
+状态：PLANNED / NOT AUTHORIZED
+
+### Phase 2D — PetController Boundary
+状态：PLANNED / NOT AUTHORIZED
+
+总体优先顺序：
 1. ImageEditor
 2. Messenger
 3. Compliance
@@ -110,7 +137,7 @@ tasks/PHASE1_ENGINEERING_GUARDRAILS.md
 
 ## 当前禁止的大动作
 
-在 Phase 1 完成前，不建议：
+在 Phase 2 完成前，仍不建议：
 - 全面重写
 - Electron 迁移
 - .NET 8 全量迁移
