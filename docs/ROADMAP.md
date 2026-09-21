@@ -90,16 +90,26 @@ a708d96 / run 35578962686 / attempt 2 / success
 
 ### Phase 2C — Compliance Boundary
 
+状态：✅ PASS / ARCHIVED
+
+归档任务：
+tasks/completed/PHASE2C_COMPLIANCE_BOUNDARY.md
+
+执行报告：
+docs/PHASE2C_EXECUTION_REPORT.md
+
+最终 CI：
+7bccac5 / run 35583063767 / attempt 1 / success
+
+### Phase 2D — PetController Boundary
+
 状态：CURRENT / AUTHORIZED
 
 当前任务：
-tasks/PHASE2C_COMPLIANCE_BOUNDARY.md
+tasks/PHASE2D_PETCONTROLLER_BOUNDARY.md
 
 策略：
-先按职责拆 partial 文件；规则、Prompt、判定算法、Audit、Hash、HTML 报告与 UI 行为全部保持不变。
-
-### Phase 2D — PetController Boundary
-状态：PLANNED / NOT AUTHORIZED
+只拆 src/MomoPet.cs 中剩余 PetController 主体，采用 Move-first；生命周期、任务、stash ingress、market、动画和 UI 行为全部保持不变。
 
 总体优先顺序：
 1. ImageEditor
