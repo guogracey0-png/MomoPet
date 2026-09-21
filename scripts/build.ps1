@@ -100,7 +100,7 @@ try {
         'AppPaths.cs','AppLog.cs','AppDiagnostics.cs','Ui.cs','TextSelection.cs','OfficeComfort.cs','MomoPet.cs','SkinWardrobe.cs','StashWorkspace.cs',
         'PetExperience.cs','AiSearch.cs','ImageEditor.cs','ImageEditor.Models.cs','ImageEditor.State.cs','ImageEditor.LocalEditing.cs','ImageEditor.AiConfig.cs','ImageEditor.AiTasks.cs','ImageEditor.Ocr.cs','ImageEditor.Precision.cs','AiPocket.cs','AiCommunity.cs',
         'Messenger.cs','Messenger.Models.cs','Messenger.State.cs','Messenger.Api.cs','Messenger.Attachments.cs','Messenger.Conversations.cs','Messenger.Groups.cs','Messenger.Courier.cs',
-        'MomoAccount.cs','Launcher.cs','ComplianceUpgrade.cs','OcrContracts.cs','EmbeddedRuntime.cs',
+        'MomoAccount.cs','Launcher.cs','ComplianceUpgrade.cs','Compliance.Models.cs','Compliance.State.cs','Compliance.Rules.cs','Compliance.Review.cs','Compliance.Audit.cs','Compliance.Rendering.cs','Compliance.Export.cs','OcrContracts.cs','EmbeddedRuntime.cs',
         'HealthCompanion.cs','CommunityCloud.cs'
     ) | ForEach-Object { Join-Path $root ('src\' + $_) }
 
