@@ -64,16 +64,26 @@ d789c60 / run 35326969067 / success
 
 ### Phase 2A — ImageEditor Boundary
 
+状态：✅ PASS / ARCHIVED
+
+归档任务：
+tasks/completed/PHASE2A_IMAGE_EDITOR_BOUNDARY.md
+
+执行报告：
+docs/PHASE2A_EXECUTION_REPORT.md
+
+最终 CI：
+dbb2cf6 / run 35575677386 / success
+
+### Phase 2B — Messenger Boundary
+
 状态：CURRENT / AUTHORIZED
 
 当前任务：
-tasks/PHASE2A_IMAGE_EDITOR_BOUNDARY.md
+tasks/PHASE2B_MESSENGER_BOUNDARY.md
 
 策略：
-先按职责拆 partial 文件，建立稳定边界；本轮不做 Service / MVVM 大改。
-
-### Phase 2B — Messenger Boundary
-状态：PLANNED / NOT AUTHORIZED
+先按职责拆 partial 文件；API、Token、附件、轮询、消息 schema、UI 与动画行为全部保持不变。
 
 ### Phase 2C — Compliance Boundary
 状态：PLANNED / NOT AUTHORIZED
